@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Process Timeline (Firestore processLogs)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; padding: 16px; max-width: 1200px; margin: auto; }
+    h2 { margin: 0 0 8px; }
+    .hint { color:#555; font-size: 13px; margin: 8px 0 12px; }
+    #chart { height: 700px; }
+    #status { font-size: 13px; background:#fafafa; border:1px solid #eee; padding:10px; border-radius:6px; white-space: pre-wrap; }
+  </style>
+</head>
+
+<body>
+  <h2>Process Gantt-Style Timeline</h2>
+  <div class="hint">
+    One row per <b>projectName (serialNumber)</b>. Bars are colored by station:
+    <b style="color:red;">Station 1</b>, <b style="color:blue;">Station 2</b>, <b style="color:green;">Station 3</b>.
+    Tooltip shows full date + weekday + rounded time. (Times rounded to nearest hour.)
+  </div>
+
+  <div id="chart"></div>
+  <div id="status">Loading...</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBePrEYgwU4tD9h82n9PbjfxtTyQMXm6Kk",
+      authDomain: "qrcodetesting-4f86e.firebaseapp.com",
+      projectId: "qrcodetesting-4f86e",
+      storageBucket: "qrcodetesting-4f86e.firebasestorage.app",
+      messagingSenderId: "746921254909",
+      appId: "1:746921254909:web:7acce026b9d96c97880394"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const statusEl = document.getElementById("status");
+    const setStatus = (msg) => {
+      statusEl.textContent = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+    };
+
+    google.charts.load("current", { packages: ["timeline"] });
+
+    function tsToDate(ts) {
+      if (!ts) return null;
+      if (typeof ts.toDate === "function") return ts.toDate(); // Firestore Timestamp
+      if (typeof ts === "number") return new Date(ts);
+      return null;
+    }
+
+    function roundToNearestHour(date) {
+      const d = new Date(date);
+      d.setMinutes(d.getMinutes() + 30);
+      d.setMinutes(0, 0, 0);
+      return d;
+    }
+
+    function stationStyle(station) {
+      if (station === "Station 1") return "color: red";
+      if (station === "Station 2") return "color: blue";
+      if (station === "Station 3") return "color: green";
+      return "color: gray";
+    }
+
+    function formatTooltip(taskName, station, start, end) {
+      const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+      const weekdayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "long" });
+      const timeFmt = new Intl.DateTimeFormat("en-GB", { hour: "numeric", minute: "2-digit", hour12: true });
+
+      const startStr = `${dateFmt.format(start)} (${weekdayFmt.format(start)}) at ${timeFmt.format(start)}`;
+      const endStr = `${dateFmt.format(end)} (${weekdayFmt.format(end)}) at ${timeFmt.format(end)}`;
+
+      return `
+        <div style="padding:8px 10px">
+          <div style="margin-bottom:6px"><b>${taskName}</b></div>
+          <div>Station: <b>${station}</b></div>
+          <div>Start: ${startStr}</div>
+          <div>End: ${endStr}</div>
+        </div>
+      `;
+    }
+
+    function normalizeStatus(s) { return (s || "").trim().toLowerCase(); }
+    function isStartStatus(s) { return normalizeStatus(s).includes("start"); }
+    function isEndStatus(s)   { return normalizeStatus(s).includes("end"); }
+
+    function keyOf(serial, station) {
+      return `${serial}||${station}`;
+    }
+
+    function buildSegmentsFromEvents(events) {
+      const groups = new Map();
+
+      for (const e of events) {
+        const serial = e.serialNumber;
+        const station = e.location;
+        const createdAt = tsToDate(e.createdAt);
+        if (!serial || !station || !createdAt) continue;
+
+        const k = keyOf(serial, station);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push({ ...e, _t: createdAt });
+      }
+
+      const segments = [];
+      const issues = [];
+
+      for (const [k, arr] of groups.entries()) {
+        arr.sort((a, b) => a._t - b._t);
+
+        let startEvent = null;
+
+        for (const ev of arr) {
+          if (isStartStatus(ev.status)) {
+            startEvent = ev;
+          } else if (isEndStatus(ev.status)) {
+            if (!startEvent) {
+              issues.push({ type: "end_without_start", serialNumber: ev.serialNumber, station: ev.location });
+              continue;
+            }
+
+            const start = roundToNearestHour(startEvent._t);
+            const end = roundToNearestHour(ev._t);
+
+            if (end < start) {
+              issues.push({ type: "end_before_start", serialNumber: ev.serialNumber, station: ev.location });
+              startEvent = null;
+              continue;
+            }
+
+            segments.push({
+              serial: ev.serialNumber,
+              projectName: ev.projectName || startEvent.projectName || "(No Project)",
+              station: ev.location,
+              start,
+              end,
+              _ongoing: false
+            });
+
+            startEvent = null;
+          }
+        }
+
+        if (startEvent) {
+          segments.push({
+            serial: startEvent.serialNumber,
+            projectName: startEvent.projectName || "(No Project)",
+            station: startEvent.location,
+            start: roundToNearestHour(startEvent._t),
+            end: roundToNearestHour(new Date()),
+            _ongoing: true
+          });
+        }
+      }
+
+      return { segments, issues };
+    }
+
+    function buildDailyTicks(minDate, maxDate) {
+      const ticks = [];
+      const d = new Date(minDate);
+      d.setHours(0, 0, 0, 0);
+
+      const end = new Date(maxDate);
+      end.setHours(0, 0, 0, 0);
+
+      while (d <= end) {
+        ticks.push(new Date(d));
+        d.setDate(d.getDate() + 1);
+      }
+      return ticks;
+    }
+
+    function drawTimeline(segments) {
+      const container = document.getElementById("chart");
+      const chart = new google.visualization.Timeline(container);
+
+      const data = new google.visualization.DataTable();
+      data.addColumn({ type: "string", id: "Task" });
+      data.addColumn({ type: "string", id: "Station" });
+      data.addColumn({ type: "string", role: "style" });
+      data.addColumn({ type: "string", role: "tooltip", p: { html: true } });
+      data.addColumn({ type: "date", id: "Start" });
+      data.addColumn({ type: "date", id: "End" });
+
+      segments.sort((a, b) => {
+        const aName = `${a.projectName} (${a.serial})`;
+        const bName = `${b.projectName} (${b.serial})`;
+        return aName.localeCompare(bName) || (a.start - b.start);
+      });
+
+      const rows = segments.map((s) => {
+        const taskName = `${s.projectName} (${s.serial})`;
+        const style = stationStyle(s.station);
+        const tooltip = formatTooltip(taskName, s.station, s.start, s.end);
+        return [taskName, s.station, style, tooltip, s.start, s.end];
+      });
+
+      data.addRows(rows);
+
+      // ✅ Force one tick per day
+      const minStart = new Date(Math.min(...segments.map(s => s.start.getTime())));
+      const maxEnd   = new Date(Math.max(...segments.map(s => s.end.getTime())));
+      minStart.setHours(0, 0, 0, 0);
+      maxEnd.setHours(0, 0, 0, 0);
+
+      const dailyTicks = buildDailyTicks(minStart, maxEnd);
+
+      chart.draw(data, {
+        tooltip: { isHtml: true },
+        timeline: {
+          rowLabelStyle: { fontSize: 12 },
+          barLabelStyle: { fontSize: 11 }
+        },
+        hAxis: {
+          viewWindow: { min: minStart, max: maxEnd },
+          ticks: dailyTicks,
+          format: "dd/MM/yyyy"
+        }
+      });
+    }
+
+    async function render() {
+      try {
+        setStatus("Reading Firestore collection: processLogs ...");
+        const snap = await getDocs(collection(db, "processLogs"));
+        const events = [];
+        snap.forEach(d => events.push(d.data()));
+
+        const { segments, issues } = buildSegmentsFromEvents(events);
+
+        setStatus({
+          collection: "processLogs",
+          totalEvents: events.length,
+          segmentsDrawn: segments.length,
+          issuesFound: issues.length,
+          issuesSample: issues.slice(0, 10)
+        });
+
+        if (segments.length === 0) {
+          setStatus(
+            "No segments to draw.\n" +
+            "Make sure you have BOTH Start Process and End Process for the same serialNumber + Station.\n" +
+            "Also ensure createdAt exists."
+          );
+          return;
+        }
+
+        drawTimeline(segments);
+      } catch (err) {
+        console.error(err);
+        setStatus("Error: " + (err.message || err));
+      }
+    }
+
+    google.charts.setOnLoadCallback(() => render());
+  </script>
+</body>
+</html>
