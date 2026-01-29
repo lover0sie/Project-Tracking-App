@@ -10,6 +10,7 @@
     body { font-family: Arial, sans-serif; padding: 16px; max-width: 1200px; margin: auto; }
     h2 { margin: 0 0 8px; }
     .hint { color:#555; font-size: 13px; margin: 8px 0 12px; }
+    #legend { margin:10px 0 14px; font-size:13px; }
     #chart { height: 700px; }
     #status { font-size: 13px; background:#fafafa; border:1px solid #eee; padding:10px; border-radius:6px; white-space: pre-wrap; }
   </style>
@@ -17,10 +18,17 @@
 
 <body>
   <h2>Process Gantt-Style Timeline</h2>
+
   <div class="hint">
-    One row per <b>projectName (serialNumber)</b>. Bars are colored by station:
-    <b style="color:red;">Station 1</b>, <b style="color:blue;">Station 2</b>, <b style="color:green;">Station 3</b>.
-    Tooltip shows full date + weekday + rounded time. (Times rounded to nearest hour.)
+    One row per <b>projectName (serialNumber)</b>. Tooltip shows employee and time. Rework is shown as a separate red segment.
+  </div>
+
+  <div id="legend">
+    <b>Legend:</b>
+    <span style="margin-left:10px; color:#7e57c2;">■ Station 1</span>
+    <span style="margin-left:10px; color:#1e88e5;">■ Station 2</span>
+    <span style="margin-left:10px; color:#43a047;">■ Station 3</span>
+    <span style="margin-left:10px; color:#e53935;">■ Rework</span>
   </div>
 
   <div id="chart"></div>
@@ -51,49 +59,70 @@
 
     function tsToDate(ts) {
       if (!ts) return null;
-      if (typeof ts.toDate === "function") return ts.toDate(); // Firestore Timestamp
+      if (typeof ts.toDate === "function") return ts.toDate();
       if (typeof ts === "number") return new Date(ts);
       return null;
     }
 
-    function roundToNearestHour(date) {
+    function roundToNearestMinute(date) {
       const d = new Date(date);
-      d.setMinutes(d.getMinutes() + 30);
-      d.setMinutes(0, 0, 0);
+      if (d.getSeconds() >= 30) d.setMinutes(d.getMinutes() + 1);
+      d.setSeconds(0, 0);
       return d;
     }
 
-    function stationStyle(station) {
-      if (station === "Station 1") return "color: red";
-      if (station === "Station 2") return "color: blue";
-      if (station === "Station 3") return "color: green";
-      return "color: gray";
+    function getPhaseFromStatus(status) {
+    const s = (status || "").toLowerCase();
+    return s.includes("rework") ? "rework" : "process";
     }
 
-    function formatTooltip(taskName, station, start, end) {
-      const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
-      const weekdayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "long" });
-      const timeFmt = new Intl.DateTimeFormat("en-GB", { hour: "numeric", minute: "2-digit", hour12: true });
+    function normalizeStatus(s) { return (s || "").trim().toLowerCase(); }
+
+    function isStartStatus(s) {
+      const t = normalizeStatus(s);
+      return t === "start process" || t === "rework start";
+    }
+    function isEndStatus(s) {
+      const t = normalizeStatus(s);
+      return t === "end process" || t === "rework end";
+    }
+    function phaseFromEvent(e) {
+      if (e.phase) return e.phase; // preferred
+      return normalizeStatus(e.status).includes("rework") ? "Rework" : "Process";
+    }
+
+    function barColor(station, phase) {
+      if (phase === "rework") return "#e53935"; // red
+      if (station === "Station 1") return "#7e57c2"; // purple
+      if (station === "Station 2") return "#1e88e5"; // blue
+      if (station === "Station 3") return "#43a047"; // green
+      return "#757575";
+    }
+
+    function formatTooltip(taskName, stationLabel, phase, employeeName, employeeNumber, start, end, isOngoing) {
+      const dateFmt = new Intl.DateTimeFormat("en-GB", { day:"2-digit", month:"2-digit", year:"numeric" });
+      const weekdayFmt = new Intl.DateTimeFormat("en-GB", { weekday:"long" });
+      const timeFmt = new Intl.DateTimeFormat("en-GB", { hour:"numeric", minute:"2-digit", hour12:true });
 
       const startStr = `${dateFmt.format(start)} (${weekdayFmt.format(start)}) at ${timeFmt.format(start)}`;
-      const endStr = `${dateFmt.format(end)} (${weekdayFmt.format(end)}) at ${timeFmt.format(end)}`;
+      const endStr = isOngoing ? "(Ongoing)" : `${dateFmt.format(end)} (${weekdayFmt.format(end)}) at ${timeFmt.format(end)}`;
+
+      const emp = `${employeeName || "-"} (${employeeNumber || "-"})`;
 
       return `
         <div style="padding:8px 10px">
           <div style="margin-bottom:6px"><b>${taskName}</b></div>
-          <div>Station: <b>${station}</b></div>
+          <div>Phase: <b>${phase}</b></div>
+          <div>Station: <b>${stationLabel}</b></div>
+          <div>Employee: <b>${emp}</b></div>
           <div>Start: ${startStr}</div>
           <div>End: ${endStr}</div>
         </div>
       `;
     }
 
-    function normalizeStatus(s) { return (s || "").trim().toLowerCase(); }
-    function isStartStatus(s) { return normalizeStatus(s).includes("start"); }
-    function isEndStatus(s)   { return normalizeStatus(s).includes("end"); }
-
-    function keyOf(serial, station) {
-      return `${serial}||${station}`;
+    function keyOf(serial, station, phase) {
+    return `${serial}||${station}||${phase}`;
     }
 
     function buildSegmentsFromEvents(events) {
@@ -102,12 +131,14 @@
       for (const e of events) {
         const serial = e.serialNumber;
         const station = e.location;
+        const phase = getPhaseFromStatus(e.status);
         const createdAt = tsToDate(e.createdAt);
         if (!serial || !station || !createdAt) continue;
 
-        const k = keyOf(serial, station);
+        const k = keyOf(serial, station, phase);
+
         if (!groups.has(k)) groups.set(k, []);
-        groups.get(k).push({ ...e, _t: createdAt });
+        groups.get(k).push({ ...e, _t: createdAt, _phase: phase });
       }
 
       const segments = [];
@@ -123,15 +154,15 @@
             startEvent = ev;
           } else if (isEndStatus(ev.status)) {
             if (!startEvent) {
-              issues.push({ type: "end_without_start", serialNumber: ev.serialNumber, station: ev.location });
+              issues.push({ type: "end_without_start", serialNumber: ev.serialNumber, station: ev.location, phase: ev._phase });
               continue;
             }
 
-            const start = roundToNearestHour(startEvent._t);
-            const end = roundToNearestHour(ev._t);
+            const start = roundToNearestMinute(startEvent._t);
+            const end = roundToNearestMinute(ev._t);
 
             if (end < start) {
-              issues.push({ type: "end_before_start", serialNumber: ev.serialNumber, station: ev.location });
+              issues.push({ type: "end_before_start", serialNumber: ev.serialNumber, station: ev.location, phase: ev._phase });
               startEvent = null;
               continue;
             }
@@ -140,6 +171,9 @@
               serial: ev.serialNumber,
               projectName: ev.projectName || startEvent.projectName || "(No Project)",
               station: ev.location,
+              phase: ev._phase,
+              employeeName: startEvent.employeeName || ev.employeeName,
+              employeeNumber: startEvent.employeeNumber || ev.employeeNumber,
               start,
               end,
               _ongoing: false
@@ -149,13 +183,17 @@
           }
         }
 
+        // ongoing segment (started but no end)
         if (startEvent) {
           segments.push({
             serial: startEvent.serialNumber,
             projectName: startEvent.projectName || "(No Project)",
             station: startEvent.location,
-            start: roundToNearestHour(startEvent._t),
-            end: roundToNearestHour(new Date()),
+            phase: startEvent._phase,
+            employeeName: startEvent.employeeName,
+            employeeNumber: startEvent.employeeNumber,
+            start: roundToNearestMinute(startEvent._t),
+            end: roundToNearestMinute(new Date()),
             _ongoing: true
           });
         }
@@ -199,22 +237,24 @@
 
       const rows = segments.map((s) => {
         const taskName = `${s.projectName} (${s.serial})`;
-        const style = stationStyle(s.station);
-        const tooltip = formatTooltip(taskName, s.station, s.start, s.end);
-        return [taskName, s.station, style, tooltip, s.start, s.end];
+        const stationLabel = s.phase === "rework" ? `${s.station} (Rework)` : s.station;
+        const style = "color: " + barColor(s.station, s.phase);
+        const tooltip = formatTooltip(taskName, stationLabel, s.phase, s.employeeName, s.employeeNumber, s.start, s.end, s._ongoing === true);
+        return [taskName, stationLabel, style, tooltip, s.start, s.end];
       });
 
       data.addRows(rows);
 
-      // ✅ Force one tick per day
+      // ----- Force date-only axis -----
       const minStart = new Date(Math.min(...segments.map(s => s.start.getTime())));
       const maxEnd   = new Date(Math.max(...segments.map(s => s.end.getTime())));
+
       minStart.setHours(0, 0, 0, 0);
       maxEnd.setHours(0, 0, 0, 0);
 
       const dailyTicks = buildDailyTicks(minStart, maxEnd);
 
-      chart.draw(data, {
+     chart.draw(data, {
         tooltip: { isHtml: true },
         timeline: {
           rowLabelStyle: { fontSize: 12 },
@@ -246,11 +286,7 @@
         });
 
         if (segments.length === 0) {
-          setStatus(
-            "No segments to draw.\n" +
-            "Make sure you have BOTH Start Process and End Process for the same serialNumber + Station.\n" +
-            "Also ensure createdAt exists."
-          );
+          setStatus("No segments to draw yet.");
           return;
         }
 

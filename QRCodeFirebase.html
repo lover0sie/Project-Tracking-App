@@ -2,10 +2,7 @@
 <html>
 <head>
   <title>QR Code Data Entry</title>
-
-  <!-- QR Scanner -->
   <script src="https://unpkg.com/html5-qrcode"></script>
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
@@ -28,26 +25,23 @@
   <h3>Scanned QR Content:</h3>
   <div id="qr-result">None</div>
 
-  <h3>Parsed QR Info</h3>
+  <h3>Project Info</h3>
   <div class="field"><b>Project Name:</b> <span id="projectName">-</span></div>
   <div class="field"><b>Description:</b> <span id="description">-</span></div>
   <div class="field"><b>Material Number:</b> <span id="materialNumber">-</span></div>
   <div class="field"><b>Serial Number:</b> <span id="serialNumber">-</span></div>
 
-  <h3>Additional Info</h3>
-
-  <label>Location:</label>
-  <select id="location">
-    <option value="Station 1">Station 1</option>
-    <option value="Station 2">Station 2</option>
-    <option value="Station 3">Station 3</option>
-  </select>
+  <h3>Employee Info</h3>
+  <div class="field"><b>Employee Name:</b> <span id="empName">-</span></div>
+  <div class="field"><b>Employee No:</b> <span id="empNo">-</span></div>
+  <div class="field"><b>Station (from employee):</b> <span id="empStation">-</span></div>
 
   <label>Status:</label>
   <select id="status">
     <option value="Start Process">Start Process</option>
     <option value="End Process">End Process</option>
-    <option value="Rework">Rework</option>
+    <option value="Start Rework">Start Rework</option>
+    <option value="Rework End">End Rework</option>
   </select>
 
   <label>Notes:</label>
@@ -78,46 +72,71 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // UI helpers
     const el = (id) => document.getElementById(id);
     const debug = (msg) => {
       console.log(msg);
       el("debug").textContent = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
     };
 
-    // ✅ Determine current station state for a serialNumber + station
-    async function getStationState(db, serialNumber, station) {
+    // -----------------------------
+    // Status & Phase helpers
+    // -----------------------------
+    function normalizeStatus(status) {
+      return (status || "").trim().toLowerCase();
+    }
+
+    function getPhaseFromStatus(status) {
+      return normalizeStatus(status).includes("rework")
+        ? "rework"
+        : "process";
+    }
+
+    function isStartLike(status) {
+      return normalizeStatus(status).includes("start");
+    }
+
+    function isEndLike(status) {
+      return normalizeStatus(status).includes("end");
+    }
+
+    let html5QrcodeScanner = null;
+    let parsedData = null;   // project
+    let employeeData = null; // employee
+    let qrScanned = false;
+
+    async function getStationState(db, serialNumber, station, phase) {
       const q = query(
         collection(db, "processLogs"),
         where("serialNumber", "==", serialNumber),
         where("location", "==", station),
-        orderBy("createdAt", "desc"),
-        limit(50)
+        orderBy("createdAt", "asc"),
+        limit(100)
       );
 
       const snap = await getDocs(q);
 
-      const events = [];
-      snap.forEach(d => events.push(d.data()));
-      events.reverse(); // oldest -> newest
-
       let started = false;
       let completed = false;
 
-      for (const e of events) {
-        const s = (e.status || "").toLowerCase();
-        if (s.includes("start")) started = true;
-        if (s.includes("end") && started) completed = true;
-      }
+      snap.forEach(doc => {
+        const data = doc.data();
+        const status = (data.status || "").toLowerCase();
+
+        // 🔑 infer phase from STATUS, not from caller
+        const eventPhase = status.includes("rework") ? "rework" : "process";
+
+        // 🚫 ignore other phase completely
+        if (eventPhase !== phase) return;
+
+        if (status.includes("start")) started = true;
+        if (status.includes("end") && started) completed = true;
+      });
 
       if (!started) return "idle";
       if (started && !completed) return "running";
       return "completed";
     }
 
-    let html5QrcodeScanner = null;
-    let qrScanned = false;
-    let parsedData = null;
 
     function clearForm() {
       el("qr-result").innerText = "None";
@@ -125,139 +144,173 @@
       el("description").innerText = "-";
       el("materialNumber").innerText = "-";
       el("serialNumber").innerText = "-";
+
+      el("empName").innerText = "-";
+      el("empNo").innerText = "-";
+      el("empStation").innerText = "-";
+
       el("notes").value = "";
-      el("location").selectedIndex = 0;
       el("status").selectedIndex = 0;
 
       parsedData = null;
+      employeeData = null;
       qrScanned = false;
+
       debug("Cleared. Ready.");
     }
 
     function onScanSuccess(decodedText) {
-      el("qr-result").innerText = decodedText;
+      const text = decodedText.trim();
+      el("qr-result").innerText = text;
 
-      const parts = decodedText.trim().split(";");
-      if (parts.length !== 8) {
-        alert("Invalid QR format! Expected 8 parts separated by ';'");
-        debug({ error: "Invalid QR format", decodedText, partsCount: parts.length });
-        return;
+      // EMPLOYEE QR: EMP;EmpNo;Name;Station 1
+      if (text.startsWith("EMP;")) {
+        const parts = text.split(";");
+        if (parts.length !== 4) {
+          alert("Invalid Employee QR format! Use: EMP;EmpNo;Name;Station 1");
+          return;
+        }
+
+        const [, employeeNumber, employeeName, station] = parts;
+
+        employeeData = { employeeNumber, employeeName, station };
+
+        el("empName").innerText = employeeName;
+        el("empNo").innerText = employeeNumber;
+        el("empStation").innerText = station;
+
+        debug({ employeeScanned: employeeData });
+      } else {
+        // PROJECT QR: 8 fields
+        const parts = text.split(";");
+        if (parts.length !== 8) {
+          alert("Invalid Project QR format!");
+          return;
+        }
+
+        const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
+        parsedData = { version, projectName, description, materialNumber, serialNumber, model, type, refrigerant };
+        qrScanned = true;
+
+        el("projectName").innerText = projectName;
+        el("description").innerText = description;
+        el("materialNumber").innerText = materialNumber;
+        el("serialNumber").innerText = serialNumber;
+
+        debug({ projectScanned: parsedData });
       }
 
-      const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
-
-      el("projectName").innerText = projectName;
-      el("description").innerText = description;
-      el("materialNumber").innerText = materialNumber;
-      el("serialNumber").innerText = serialNumber;
-
-      parsedData = { version, projectName, description, materialNumber, serialNumber, model, type, refrigerant };
-      qrScanned = true;
-
-      debug({ scanned: true, parsedData });
-
       if (html5QrcodeScanner) {
-        html5QrcodeScanner.clear()
-          .then(() => {
-            html5QrcodeScanner = null;
-            debug("Scan complete. You can now Submit.");
-          })
-          .catch((e) => debug({ scannerClearError: String(e) }));
+        html5QrcodeScanner.clear().then(() => html5QrcodeScanner = null);
       }
     }
 
-    function onScanFailure(_error) {}
+    function onScanFailure(_) {}
 
     el("start-scan").addEventListener("click", () => {
-      try {
-        if (!html5QrcodeScanner) {
-          html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
-          html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-          debug("Scanner started. Point camera at QR code...");
-        } else {
-          debug("Scanner already running...");
-        }
-      } catch (e) {
-        debug({ startScanError: String(e) });
-        alert("Failed to start scanner. Check browser camera permission.");
+      if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        debug("Scanner started...");
       }
     });
 
     el("clear-data").addEventListener("click", clearForm);
 
-    // ✅ Submit with validation
+
     el("submit-data").addEventListener("click", async () => {
-      if (!qrScanned || !parsedData) {
-        alert("Please scan a QR code first!");
-        debug("Submit blocked: no QR scanned.");
+    debug("Submit clicked ✅");
+
+    if (!qrScanned || !parsedData) {
+      alert("Scan Project QR first!");
+      debug("Blocked: project not scanned");
+      return;
+    }
+    if (!employeeData) {
+      alert("Scan Employee QR first!");
+      debug("Blocked: employee not scanned");
+      return;
+    }
+
+    const serial = parsedData.serialNumber;
+    const station = employeeData.station;
+    const status = el("status").value;
+
+    try {
+      debug({ step: "validating", serial, station, status });
+
+      const phase = getPhaseFromStatus(status);
+      const state = await getStationState(db, serial, station, phase);
+      debug({ validation: { serial, station, status, state } });
+
+      // Check PROCESS state only for normal process
+      if (phase === "process") {
+        const processState = await getStationState(db, serial, station, "process");
+
+        if (status === "Start Process" && processState !== "idle") {
+          alert(`Error: Project ${serial} at ${station} is already running.`);
+          return;
+        }
+
+        if (status === "End Process" && processState !== "running") {
+          alert(`Error: Project ${serial} at ${station} is not running yet.`);
+          return;
+        }
+      }
+
+      // Check REWORK state separately
+      if (phase === "rework") {
+        const reworkState = await getStationState(db, serial, station, "rework");
+
+        if (status.toLowerCase().includes("start") && reworkState === "running") {
+          alert(`Error: Rework for Project ${serial} is already running.`);
+          return;
+        }
+
+        if (status.toLowerCase().includes("end") && reworkState !== "running") {
+          alert(`Error: Rework for Project ${serial} is not running yet.`);
+          return;
+        }
+      }
+
+      const payload = {
+        ...parsedData,
+        location: station,
+        status,
+        notes: el("notes").value,
+        employeeName: employeeData.employeeName,
+        employeeNumber: employeeData.employeeNumber,
+        employeeStation: employeeData.station,
+        createdAt: serverTimestamp()
+      };
+
+      debug({ step: "saving", payload });
+
+      const docRef = await addDoc(collection(db, "processLogs"), payload);
+
+      debug({ saved: true, docId: docRef.id });
+      alert("Saved!");
+      clearForm();
+    } catch (err) {
+      console.error(err);
+      debug({ error: err?.message || String(err), code: err?.code || null });
+
+      // Most common: index not ready
+      if (err?.code === "failed-precondition" && (err?.message || "").toLowerCase().includes("index")) {
+        alert("⚠ Firestore index is still building. Wait until it becomes ENABLED, then try again.");
         return;
       }
 
-      const station = el("location").value;
-      const status = el("status").value;
-      const serial = parsedData.serialNumber;
-
-      try {
-        // Check existing state from Firestore
-        const state = await getStationState(db, serial, station);
-        debug({ validation: { serial, station, status, state } });
-
-        // Validation rules
-        if (status === "Start Process") {
-          if (state === "running") {
-            alert(`❌ Error: ${serial} at ${station} already STARTED (not ended yet).`);
-            return;
-          }
-          if (state === "completed") {
-            alert(`❌ Error: ${serial} at ${station} already COMPLETED (Start + End). Cannot start again.`);
-            return;
-          }
-        }
-
-        if (status === "End Process") {
-          if (state === "idle") {
-            alert(`❌ Error: ${serial} at ${station} has NOT been started yet. Cannot end before start.`);
-            return;
-          }
-          if (state === "completed") {
-            alert(`❌ Error: ${serial} at ${station} already ENDED. Cannot end twice.`);
-            return;
-          }
-        }
-
-        // Save event log
-        const payload = {
-          ...parsedData,
-          location: station,
-          status: status,
-          notes: el("notes").value,
-          createdAt: serverTimestamp()
-        };
-
-        debug({ submitting: true, payload });
-
-        const docRef = await addDoc(collection(db, "processLogs"), payload);
-        debug({ saved: true, docId: docRef.id });
-
-        alert("Data saved to Firestore!");
-        clearForm();
-      } catch (err) {
-        console.error(err);
-
-        // Most common: needs composite index for where+where+orderBy
-        debug({ saveError: err?.message || String(err), code: err?.code || null });
-
-        if (String(err?.message || "").toLowerCase().includes("index")) {
-          alert("Firestore needs an INDEX for this query. Open DevTools Console and click the index link it provides.");
-        } else if (err?.code === "permission-denied") {
-          alert("Failed: permission denied. Check Firestore Rules.");
-        } else {
-          alert("Failed: " + (err?.message || err));
-        }
+      if (err?.code === "permission-denied") {
+        alert("❌ Permission denied. Check Firestore Rules (write/read).");
+        return;
       }
-    });
 
-    debug("Ready. Click 'Scan QR Code' to start.");
+      alert("❌ Error: " + (err?.message || err));
+    }
+  });
+
+    debug("Ready.");
   </script>
 </body>
 </html>
