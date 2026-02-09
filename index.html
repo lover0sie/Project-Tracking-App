@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content ="width=device-width,initial-scale=1" />
+    <title>QR Code Data Entry</title>
+
+    <!-- QR library -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+
+    <!--My CSS file-->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+  <h2>QR Code Scanner & Data Entry</h2>
+
+  <button id="start-scan">Scan QR Code</button>
+  <div id="reader" style="width:100%; margin-top:10px;"></div>
+
+  <h3>Scanned QR Content:</h3>
+  <div id="qr-result">None</div>
+
+  <h3>Project Info</h3>
+  <div class="field"><b>Project Name:</b> <span id="projectName">-</span></div>
+  <div class="field"><b>Description:</b> <span id="description">-</span></div>
+  <div class="field"><b>Material Number:</b> <span id="materialNumber">-</span></div>
+  <div class="field"><b>Serial Number:</b> <span id="serialNumber">-</span></div>
+
+  <h3>Employee Info</h3>
+  <div class="field"><b>Employee Name:</b> <span id="empName">-</span></div>
+  <div class="field"><b>Employee No:</b> <span id="empNo">-</span></div>
+  <div class="field"><b>Station (from employee):</b> <span id="empStation">-</span></div>
+
+  <label>Status:</label>
+  <select id="status">
+    <option value="Start Process">Start Process</option>
+    <option value="End Process">End Process</option>
+    <option value="Start Rework">Start Rework</option>
+    <option value="Rework End">End Rework</option>
+  </select>
+
+  <label>Notes:</label>
+  <input type="text" id="notes" placeholder="Enter notes">
+
+  <button id="submit-data">Submit</button>
+  <button id="clear-data" style="margin-top:6px;">Clear</button>
+
+  <h3>Debug</h3>
+  <div id="debug">Ready.</div>
+
+  <script type="module" src="js/app.js"></script>
+  </body>
+  </html>
+

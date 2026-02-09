@@ -1,65 +1,18 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>QR Code Data Entry</title>
-  <script src="https://unpkg.com/html5-qrcode"></script>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 400px; margin:auto;}
-    h2 { text-align: center; }
-    button { padding: 10px 20px; font-size: 16px; margin-top:10px; width:100%; }
-    select, input { width: 100%; padding: 8px; margin: 5px 0 15px; font-size:16px; }
-    #qr-result { font-size: 16px; color: blue; margin: 10px 0; word-break: break-word; }
-    .field { background: #f2f2f2; padding: 8px; margin-bottom: 10px; border-radius: 4px;}
-    #debug { font-size: 12px; white-space: pre-wrap; background:#fafafa; border:1px solid #eee; padding:10px; border-radius:6px; }
-  </style>
-</head>
-
-<body>
-  <h2>QR Code Scanner & Data Entry</h2>
-
-  <button id="start-scan">Scan QR Code</button>
-  <div id="reader" style="width:100%; margin-top:10px;"></div>
-
-  <h3>Scanned QR Content:</h3>
-  <div id="qr-result">None</div>
-
-  <h3>Project Info</h3>
-  <div class="field"><b>Project Name:</b> <span id="projectName">-</span></div>
-  <div class="field"><b>Description:</b> <span id="description">-</span></div>
-  <div class="field"><b>Material Number:</b> <span id="materialNumber">-</span></div>
-  <div class="field"><b>Serial Number:</b> <span id="serialNumber">-</span></div>
-
-  <h3>Employee Info</h3>
-  <div class="field"><b>Employee Name:</b> <span id="empName">-</span></div>
-  <div class="field"><b>Employee No:</b> <span id="empNo">-</span></div>
-  <div class="field"><b>Station (from employee):</b> <span id="empStation">-</span></div>
-
-  <label>Status:</label>
-  <select id="status">
-    <option value="Start Process">Start Process</option>
-    <option value="End Process">End Process</option>
-    <option value="Start Rework">Start Rework</option>
-    <option value="Rework End">End Rework</option>
-  </select>
-
-  <label>Notes:</label>
-  <input type="text" id="notes" placeholder="Enter notes">
-
-  <button id="submit-data">Submit</button>
-  <button id="clear-data" style="margin-top:6px;">Clear</button>
-
-  <h3>Debug</h3>
-  <div id="debug">Ready.</div>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+/* Firebase imports */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import {
-      getFirestore, collection, addDoc, serverTimestamp,
-      query, where, orderBy, getDocs, limit
+      getFirestore, 
+      collection, 
+      addDoc, 
+      serverTimestamp,
+      query, 
+      where, 
+      orderBy, 
+      getDocs, 
+      limit
     } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
+/* Firebase configuration and database initialization */
     const firebaseConfig = {
       apiKey: "AIzaSyBePrEYgwU4tD9h82n9PbjfxtTyQMXm6Kk",
       authDomain: "qrcodetesting-4f86e.firebaseapp.com",
@@ -72,15 +25,22 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+/* Debug messages */
+
     const el = (id) => document.getElementById(id);
     const debug = (msg) => {
       console.log(msg);
       el("debug").textContent = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
     };
 
-    // -----------------------------
-    // Status & Phase helpers
-    // -----------------------------
+
+/* Helper functions 
+    1 - Trim status to remove spaces and convert to lower case
+    2 - Get phase from status either rework or process
+    3 - Check if the normalize status contains start and returns true
+    4 - Check if the normalize status contains end and returns true
+
+*/
     function normalizeStatus(status) {
       return (status || "").trim().toLowerCase();
     }
@@ -99,10 +59,14 @@
       return normalizeStatus(status).includes("end");
     }
 
+/* Initialize variables */
+
     let html5QrcodeScanner = null;
-    let parsedData = null;   // project
+    let vesselData = null;   // vessel
     let employeeData = null; // employee
     let qrScanned = false;
+
+/* Get the station state from firestore */ 
 
     async function getStationState(db, serialNumber, station, phase) {
       const q = query(
@@ -122,21 +86,28 @@
         const data = doc.data();
         const status = (data.status || "").toLowerCase();
 
-        // 🔑 infer phase from STATUS, not from caller
+        // Infer phase from STATUS, not from caller
         const eventPhase = status.includes("rework") ? "rework" : "process";
 
-        // 🚫 ignore other phase completely
+        // Ignore other phase completely
         if (eventPhase !== phase) return;
 
+        // Project has started if the status includes start
         if (status.includes("start")) started = true;
+
+        // Project has completed if the status includes end and started is true
         if (status.includes("end") && started) completed = true;
       });
 
+      // If the project has not started, return idle status
       if (!started) return "idle";
+      
       if (started && !completed) return "running";
+
       return "completed";
     }
 
+/* Function to clear the form and update debug */
 
     function clearForm() {
       el("qr-result").innerText = "None";
@@ -152,25 +123,28 @@
       el("notes").value = "";
       el("status").selectedIndex = 0;
 
-      parsedData = null;
+      vesselData = null;
       employeeData = null;
       qrScanned = false;
 
       debug("Cleared. Ready.");
     }
 
+/* Function to parse the scanned QR code when scan succeeded */
+
     function onScanSuccess(decodedText) {
       const text = decodedText.trim();
       el("qr-result").innerText = text;
 
-      // EMPLOYEE QR: EMP;EmpNo;Name;Station 1
-      if (text.startsWith("EMP;")) {
-        const parts = text.split(";");
-        if (parts.length !== 4) {
-          alert("Invalid Employee QR format! Use: EMP;EmpNo;Name;Station 1");
-          return;
-        }
+        // EMPLOYEE QR: EMP;EmpNo;Name;Station
+        if (text.startsWith("EMP;")) {
+            const parts = text.split(";");
+            if (parts.length !== 4) {
+            alert("Invalid Employee QR format! Use: EMP;EmpNo;Name;Station 1");
+            return;
+            }
 
+        // Store in array
         const [, employeeNumber, employeeName, station] = parts;
 
         employeeData = { employeeNumber, employeeName, station };
@@ -179,17 +153,20 @@
         el("empNo").innerText = employeeNumber;
         el("empStation").innerText = station;
 
+        // Update debug 
         debug({ employeeScanned: employeeData });
+
       } else {
-        // PROJECT QR: 8 fields
+        // PROJECT QR: D1;Project Name; Description; Material Number; Serial Number; Model; Chiller Type; Refrigerant
         const parts = text.split(";");
         if (parts.length !== 8) {
           alert("Invalid Project QR format!");
           return;
         }
 
+        // Store in array
         const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
-        parsedData = { version, projectName, description, materialNumber, serialNumber, model, type, refrigerant };
+        vesselData = { version, projectName, description, materialNumber, serialNumber, model, type, refrigerant };
         qrScanned = true;
 
         el("projectName").innerText = projectName;
@@ -197,16 +174,19 @@
         el("materialNumber").innerText = materialNumber;
         el("serialNumber").innerText = serialNumber;
 
-        debug({ projectScanned: parsedData });
+        // Update debug
+        debug({ projectScanned: vesselData });
       }
 
+      // Stops and removes QR code scanner if its running
       if (html5QrcodeScanner) {
         html5QrcodeScanner.clear().then(() => html5QrcodeScanner = null);
       }
     }
 
     function onScanFailure(_) {}
-
+    
+    /* Starts QR code scanning when scan qr code button is pressed */
     el("start-scan").addEventListener("click", () => {
       if (!html5QrcodeScanner) {
         html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
@@ -215,24 +195,28 @@
       }
     });
 
+    /* Calls function to clear form when button clear button is clicked */
     el("clear-data").addEventListener("click", clearForm);
+    debug("Clear button clicked.")
 
-
+    /* Submit data when submit button is clicked */
     el("submit-data").addEventListener("click", async () => {
-    debug("Submit clicked ✅");
 
-    if (!qrScanned || !parsedData) {
+    // If QR code not scanned OR vessel data is empty
+    if (!qrScanned || !vesselData) {
       alert("Scan Project QR first!");
       debug("Blocked: project not scanned");
       return;
     }
+    // If employee data is empty
     if (!employeeData) {
       alert("Scan Employee QR first!");
       debug("Blocked: employee not scanned");
       return;
     }
 
-    const serial = parsedData.serialNumber;
+    // Initilaize serial, station and status
+    const serial = vesselData.serialNumber;
     const station = employeeData.station;
     const status = el("status").value;
 
@@ -273,8 +257,9 @@
         }
       }
 
+      // Send data to firestore
       const payload = {
-        ...parsedData,
+        ...vesselData,
         location: station,
         status,
         notes: el("notes").value,
@@ -297,20 +282,17 @@
 
       // Most common: index not ready
       if (err?.code === "failed-precondition" && (err?.message || "").toLowerCase().includes("index")) {
-        alert("⚠ Firestore index is still building. Wait until it becomes ENABLED, then try again.");
+        alert("Firestore index is still building. Wait until it becomes ENABLED, then try again.");
         return;
       }
 
       if (err?.code === "permission-denied") {
-        alert("❌ Permission denied. Check Firestore Rules (write/read).");
+        alert("Permission denied. Check Firestore Rules (write/read).");
         return;
       }
 
-      alert("❌ Error: " + (err?.message || err));
+      alert("Error: " + (err?.message || err));
     }
   });
 
     debug("Ready.");
-  </script>
-</body>
-</html>
