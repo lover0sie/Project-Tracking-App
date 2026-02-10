@@ -1,9 +1,202 @@
-body { font-family: Arial, sans-serif; padding: 20px; max-width: 400px; margin:auto;}
-* { box-sizing: border-box;}
-.wrap { max-width: 520px; margin: 0 auto; }
-h2 { text-align: center; }
-button { padding: 10px 20px; font-size: 16px; margin-top:10px; width:100%; }
-select, input { width: 100%; padding: 8px; margin: 5px 0 15px; font-size:16px; }
-#qr-result { font-size: 16px; color: blue; margin: 10px 0; word-break: break-word; }
-.field { background: #f2f2f2; padding: 8px; margin-bottom: 10px; border-radius: 4px;}
- #debug { font-size: 12px; white-space: pre-wrap; background:#fafafa; border:1px solid #eee; padding:10px; border-radius:6px; }
+:root{
+  --bg:#f6f7fb;
+  --card:#ffffff;
+  --text:#111827;
+  --muted:#6b7280;
+  --border:#e5e7eb;
+  --shadow: 0 8px 24px rgba(17,24,39,0.08);
+  --accent:#2563eb;
+  --accentHover:#1d4ed8;
+  --radius:14px;
+  --radiusSm:10px;
+}
+
+*{ box-sizing:border-box; }
+body{
+  margin:0;
+  padding:20px;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color:var(--text);
+  background:var(--bg);
+}
+
+.wrap{
+  max-width:520px;
+  margin:0 auto;
+}
+
+h2{
+  margin:10px 0 16px;
+  text-align:center;
+  font-size:20px;
+  font-weight:800;
+  letter-spacing:.2px;
+}
+
+h3{
+  margin:16px 0 10px;
+  font-size:13px;
+  font-weight:700;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+
+.hidden{ display:none !important; }
+
+/* Step indicator (minimal tabs) */
+.stepbar{
+  display:flex;
+  gap:10px;
+  margin: 8px 0 16px;
+}
+.step{
+  flex:1;
+  text-align:center;
+  padding:10px 8px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  font-size:12px;
+  color:var(--muted);
+  background:#fff;
+}
+.step.active{
+  color:var(--accent);
+  border-color: rgba(37,99,235,0.35);
+  box-shadow: 0 6px 18px rgba(37,99,235,0.12);
+  font-weight:800;
+}
+
+/* Cards / sections */
+.screen{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:14px;
+  box-shadow: var(--shadow);
+}
+
+/* Field rows */
+.field{
+  border:1px solid var(--border);
+  background:#fafafa;
+  border-radius:var(--radiusSm);
+  padding:10px 12px;
+  margin-bottom:10px;
+  font-size:14px;
+  line-height:1.35;
+}
+.field b{
+  color:#374151;
+  font-weight:700;
+}
+.field span{
+  color:#111827;
+  font-weight:600;
+}
+
+/* Scanner */
+#reader{
+  margin-top:10px;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  overflow:hidden;
+  background:#fff;
+}
+
+/* Inputs */
+label{
+  display:block;
+  margin: 6px 0 6px;
+  font-size:13px;
+  font-weight:700;
+  color:#374151;
+}
+select, input{
+  width:100%;
+  padding:12px 12px;
+  border:1px solid var(--border);
+  border-radius:var(--radiusSm);
+  background:#fff;
+  font-size:15px;
+  outline:none;
+}
+select:focus, input:focus{
+  border-color: rgba(37,99,235,0.55);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+}
+input::placeholder{
+  color:#9ca3af;
+}
+
+/* Buttons */
+button{
+  width:100%;
+  padding:12px 14px;
+  border-radius:var(--radiusSm);
+  border:1px solid transparent;
+  font-size:15px;
+  font-weight:800;
+  cursor:pointer;
+  transition: transform .05s ease, background .12s ease, border-color .12s ease;
+}
+
+#start-scan, #submit-data{
+  background:var(--accent);
+  color:#fff;
+}
+#start-scan:hover, #submit-data:hover{
+  background:var(--accentHover);
+}
+button:active{
+  transform: translateY(1px);
+}
+
+/* Secondary buttons */
+button.secondary, #clear-data{
+  background:#fff;
+  color:#111827;
+  border-color:var(--border);
+}
+button.secondary:hover, #clear-data:hover{
+  border-color:#cbd5e1;
+  background:#77c542;
+}
+
+/* Hint + Debug */
+.hint{
+  margin: 6px 0 10px;   /* gap from label and input */
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#debug{
+  margin-top:14px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:12px;
+  font-size:12px;
+  color:#334155;
+  white-space:pre-wrap;
+}
+
+select{
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #9ca3af 50%),
+    linear-gradient(135deg, #9ca3af 50%, transparent 50%),
+    linear-gradient(to right, transparent, transparent);
+  background-position:
+    calc(100% - 18px) 55%,
+    calc(100% - 12px) 55%,
+    0 0;
+  background-size: 6px 6px, 6px 6px, 100% 100%;
+  background-repeat: no-repeat;
+  padding-right: 36px; /* space for arrow */
+}
+

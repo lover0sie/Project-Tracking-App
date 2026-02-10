@@ -66,6 +66,47 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     let employeeData = null; // employee
     let qrScanned = false;
 
+    // Steps: "employee" -> "project" -> "status"
+    let currentStep = "employee";
+
+    function setStep(step) {
+    currentStep = step;
+
+    // Screens
+    el("screen-employee").classList.toggle("hidden", step !== "employee");
+    el("screen-project").classList.toggle("hidden", step !== "project");
+    el("screen-status").classList.toggle("hidden", step !== "status");
+
+    // Step indicator
+    el("step1").classList.toggle("active", step === "employee");
+    el("step2").classList.toggle("active", step === "project");
+    el("step3").classList.toggle("active", step === "status");
+
+    // Update notes requirement hint
+    updateNotesRuleUI();
+
+    debug({ step: "ui_step_changed", currentStep });
+
+    // hide scan button when at status step
+    const hideScan = (step === "status");
+    el("start-scan").classList.toggle("hidden", hideScan);
+    el("reader").classList.toggle("hidden", hideScan);
+
+    }
+
+    function updateNotesRuleUI() {
+    const status = el("status")?.value || "Start Process";
+    const phase = getPhaseFromStatus(status);
+
+    // Process notes optional, Rework notes compulsory
+    const mustHaveNotes = phase === "rework";
+
+    el("notes-hint").textContent = mustHaveNotes
+        ? "Notes are REQUIRED for Rework."
+        : "Notes are OPTIONAL for Process.";
+    }
+
+
 /* Get the station state from firestore */ 
 
     async function getStationState(db, serialNumber, station, phase) {
@@ -133,56 +174,72 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 /* Function to parse the scanned QR code when scan succeeded */
 
     function onScanSuccess(decodedText) {
-      const text = decodedText.trim();
-      el("qr-result").innerText = text;
+        const text = decodedText.trim();
+        el("qr-result").innerText = text;
+
+        const isEmployee = text.startsWith("EMP;");
+
+        // Enforce step order
+        if (currentStep === "employee" && !isEmployee) {
+            alert("Please scan EMPLOYEE QR first (EMP;EmpNo;Name;Station).");
+            return;
+        }
+        if (currentStep === "project" && isEmployee) {
+            alert("Employee already scanned. Now scan PROJECT QR (D1;...;Refrigerant).");
+            return;
+        }
+        if (currentStep === "status") {
+            alert("Status page: scanning is disabled. Submit to continue.");
+            return;
+        }
 
         // EMPLOYEE QR: EMP;EmpNo;Name;Station
-        if (text.startsWith("EMP;")) {
+        if (isEmployee) {
             const parts = text.split(";");
             if (parts.length !== 4) {
-            alert("Invalid Employee QR format! Use: EMP;EmpNo;Name;Station 1");
+            alert("Invalid Employee QR format! Use: EMP;EmpNo;Name;Station");
             return;
             }
 
-        // Store in array
-        const [, employeeNumber, employeeName, station] = parts;
+            const [, employeeNumber, employeeName, station] = parts;
+            employeeData = { employeeNumber, employeeName, station };
 
-        employeeData = { employeeNumber, employeeName, station };
+            el("empName").innerText = employeeName;
+            el("empNo").innerText = employeeNumber;
+            el("empStation").innerText = station;
 
-        el("empName").innerText = employeeName;
-        el("empNo").innerText = employeeNumber;
-        el("empStation").innerText = station;
+            debug({ employeeScanned: employeeData });
+            debug("Employee scanned. Press Submit to continue.");
 
-        // Update debug 
-        debug({ employeeScanned: employeeData });
 
-      } else {
-        // PROJECT QR: D1;Project Name; Description; Material Number; Serial Number; Model; Chiller Type; Refrigerant
-        const parts = text.split(";");
-        if (parts.length !== 8) {
-          alert("Invalid Project QR format!");
-          return;
+        } else {
+            // PROJECT QR: D1;Project Name; Description; Material Number; Serial Number; Model; Chiller Type; Refrigerant
+            const parts = text.split(";");
+            if (parts.length !== 8) {
+            alert("Invalid Project QR format! Expected 8 fields separated by ';'");
+            return;
+            }
+
+            const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
+            vesselData = { version, projectName, description, materialNumber, serialNumber, model, type, refrigerant };
+            qrScanned = true;
+
+            el("projectName").innerText = projectName;
+            el("description").innerText = description;
+            el("materialNumber").innerText = materialNumber;
+            el("serialNumber").innerText = serialNumber;
+
+            debug({ projectScanned: vesselData });
+            debug("Project scanned. Press Submit to continue.");
+
         }
 
-        // Store in array
-        const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
-        vesselData = { version, projectName, description, materialNumber, serialNumber, model, type, refrigerant };
-        qrScanned = true;
+        // stop scanner after successful scan
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.clear().then(() => (html5QrcodeScanner = null));
+        }
+        }
 
-        el("projectName").innerText = projectName;
-        el("description").innerText = description;
-        el("materialNumber").innerText = materialNumber;
-        el("serialNumber").innerText = serialNumber;
-
-        // Update debug
-        debug({ projectScanned: vesselData });
-      }
-
-      // Stops and removes QR code scanner if its running
-      if (html5QrcodeScanner) {
-        html5QrcodeScanner.clear().then(() => html5QrcodeScanner = null);
-      }
-    }
 
     function onScanFailure(_) {}
     
@@ -195,9 +252,28 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
     });
 
-    /* Calls function to clear form when button clear button is clicked */
-    el("clear-data").addEventListener("click", clearForm);
-    debug("Clear button clicked.")
+    // EMPLOYEE page submit → go to project page
+    el("to-project").addEventListener("click", () => {
+      if (!employeeData) {
+        alert("Please scan employee QR first.");
+        return;
+      }
+      setStep("project");
+    });
+
+    // PROJECT page submit → go to status page
+    el("to-status").addEventListener("click", () => {
+      if (!vesselData) {
+        alert("Please scan project QR first.");
+        return;
+      }
+      setStep("status");
+    });
+
+
+    el("status").addEventListener("change", updateNotesRuleUI);
+
+    
 
     /* Submit data when submit button is clicked */
     el("submit-data").addEventListener("click", async () => {
@@ -219,6 +295,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     const serial = vesselData.serialNumber;
     const station = employeeData.station;
     const status = el("status").value;
+    const notes = (el("notes").value || "").trim();
+    const phase = getPhaseFromStatus(status);
+
+    // Notes rule: REQUIRED for rework, optional for process
+    if (phase === "rework" && notes.length === 0) {
+    alert("Notes are required for Rework (Start/End Rework).");
+    return;
+    }
 
     try {
       debug({ step: "validating", serial, station, status });
@@ -262,7 +346,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         ...vesselData,
         location: station,
         status,
-        notes: el("notes").value,
+        notes,
         employeeName: employeeData.employeeName,
         employeeNumber: employeeData.employeeNumber,
         employeeStation: employeeData.station,
@@ -276,6 +360,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       debug({ saved: true, docId: docRef.id });
       alert("Saved!");
       clearForm();
+      setStep("employee");
     } catch (err) {
       console.error(err);
       debug({ error: err?.message || String(err), code: err?.code || null });
@@ -293,6 +378,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
       alert("Error: " + (err?.message || err));
     }
-  });
+});
 
     debug("Ready.");

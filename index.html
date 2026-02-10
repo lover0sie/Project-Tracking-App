@@ -1,55 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content ="width=device-width,initial-scale=1" />
-    <title>QR Code Data Entry</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QR Project Tracking</title>
 
-    <!-- QR library -->
-    <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- QR library -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
-    <!--My CSS file-->
-    <link rel="stylesheet" href="css/styles.css">
+  <!-- 🔥 THIS LINE LOADS YOUR CSS -->
+  <link rel="stylesheet" href="css/styles.css">
 </head>
 
 <body>
-  <h2>QR Code Scanner & Data Entry</h2>
+  <div class="wrap">
+    <h2>QR Project Tracking</h2>
 
-  <button id="start-scan">Scan QR Code</button>
-  <div id="reader" style="width:100%; margin-top:10px;"></div>
+    <!-- Step indicator -->
+    <div class="stepbar">
+      <div class="step" id="step1">Employee</div>
+      <div class="step" id="step2">Project</div>
+      <div class="step" id="step3">Status</div>
+    </div>
 
-  <h3>Scanned QR Content:</h3>
-  <div id="qr-result">None</div>
+    <!-- Shared scanner -->
+    <button id="start-scan">Scan QR Code</button>
+    <div id="reader" style="width:100%; margin-top:10px;"></div>
 
-  <h3>Project Info</h3>
-  <div class="field"><b>Project Name:</b> <span id="projectName">-</span></div>
-  <div class="field"><b>Description:</b> <span id="description">-</span></div>
-  <div class="field"><b>Material Number:</b> <span id="materialNumber">-</span></div>
-  <div class="field"><b>Serial Number:</b> <span id="serialNumber">-</span></div>
+    <div id="qr-result" class="hidden"></div>
 
-  <h3>Employee Info</h3>
-  <div class="field"><b>Employee Name:</b> <span id="empName">-</span></div>
-  <div class="field"><b>Employee No:</b> <span id="empNo">-</span></div>
-  <div class="field"><b>Station (from employee):</b> <span id="empStation">-</span></div>
+    <!-- SCREEN 1 -->
+    <section id="screen-employee" class="screen">
+      <h3>Employee Info</h3>
+      <div class="field"><b>Employee Name:</b> <span id="empName">-</span></div>
+      <div class="field"><b>Employee No:</b> <span id="empNo">-</span></div>
+      <div class="field"><b>Station:</b> <span id="empStation">-</span></div>
 
-  <label>Status:</label>
-  <select id="status">
-    <option value="Start Process">Start Process</option>
-    <option value="End Process">End Process</option>
-    <option value="Start Rework">Start Rework</option>
-    <option value="Rework End">End Rework</option>
-  </select>
+      <button id="to-project" class="secondary">Submit</button>
+    </section>
 
-  <label>Notes:</label>
-  <input type="text" id="notes" placeholder="Enter notes">
+    <!-- SCREEN 2 -->
+    <section id="screen-project" class="screen hidden">
+      <h3>Project Info</h3>
+      <div class="field"><b>Project Name:</b> <span id="projectName">-</span></div>
+      <div class="field"><b>Description:</b> <span id="description">-</span></div>
+      <div class="field"><b>Material Number:</b> <span id="materialNumber">-</span></div>
+      <div class="field"><b>Serial Number:</b> <span id="serialNumber">-</span></div>
 
-  <button id="submit-data">Submit</button>
-  <button id="clear-data" style="margin-top:6px;">Clear</button>
+      <button id="to-status" class="secondary">Submit</button>
+    </section>
 
-  <h3>Debug</h3>
-  <div id="debug">Ready.</div>
+    <!-- SCREEN 3 -->
+    <section id="screen-status" class="screen hidden">
+      <h3>Status</h3>
 
-  <script type="module" src="js/app.js"></script>
-  </body>
-  </html>
+      <label>Status:</label>
+      <select id="status">
+        <option value="Start Process">Start Process</option>
+        <option value="End Process">End Process</option>
+        <option value="Start Rework">Start Rework</option>
+        <option value="End Rework">End Rework</option>
+      </select>
 
+      <label>Notes:</label>
+      <div class="hint" id="notes-hint"></div>
+      <input type="text" id="notes" placeholder="Enter notes" />
+      
+
+      <button id="submit-data">Submit</button>
+    </section>
+
+    <h3>Debug</h3>
+    <div id="debug">Ready.</div>
+
+    <script type="module" src="js/app.js"></script>
+  </div>
+</body>
+</html>
