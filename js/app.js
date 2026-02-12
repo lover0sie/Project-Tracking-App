@@ -24,15 +24,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
-/* Debug messages */
-
     const el = (id) => document.getElementById(id);
-    const debug = (msg) => {
-      console.log(msg);
-      el("debug").textContent = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
-    };
-
 
 /* Helper functions 
     1 - Trim status to remove spaces and convert to lower case
@@ -65,32 +57,58 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     let vesselData = null;   // vessel
     let employeeData = null; // employee
     let qrScanned = false;
+    let started = false;
 
     // Steps: "employee" -> "project" -> "status"
     let currentStep = "employee";
 
+    // Prevent repeated prompts from the same QR / rapid callbacks
+    let lastDecodedText = "";
+    let lastDecodedAt = 0;
+    let alertLock = false;
+
+    function safeAlert(msg, cooldownMs = 1500) {
+      if (alertLock) return;
+      alertLock = true;
+      alert(msg);
+      setTimeout(() => (alertLock = false), cooldownMs);
+    }
+
+    function shouldIgnoreDuplicate(text, windowMs = 1200) {
+      const now = Date.now();
+      const same = text === lastDecodedText && (now - lastDecodedAt) < windowMs;
+      lastDecodedText = text;
+      lastDecodedAt = now;
+      return same;
+    }
+
     function setStep(step) {
-    currentStep = step;
+      currentStep = step;
 
-    // Screens
-    el("screen-employee").classList.toggle("hidden", step !== "employee");
-    el("screen-project").classList.toggle("hidden", step !== "project");
-    el("screen-status").classList.toggle("hidden", step !== "status");
+      // Screens
+      el("screen-employee").classList.toggle("hidden", step !== "employee");
+      el("screen-project").classList.toggle("hidden", step !== "project");
+      el("screen-status").classList.toggle("hidden", step !== "status");
 
-    // Step indicator
-    el("step1").classList.toggle("active", step === "employee");
-    el("step2").classList.toggle("active", step === "project");
-    el("step3").classList.toggle("active", step === "status");
+      // Step indicator
+      el("step1").classList.toggle("active", step === "employee");
+      el("step2").classList.toggle("active", step === "project");
+      el("step3").classList.toggle("active", step === "status");
 
-    // Update notes requirement hint
-    updateNotesRuleUI();
+      // Update notes requirement hint
+      updateNotesRuleUI();
 
-    debug({ step: "ui_step_changed", currentStep });
+      // hide scan button when at status step
+      const hideScan = (step === "status");
+      el("reader").classList.toggle("hidden", hideScan);
 
-    // hide scan button when at status step
-    const hideScan = (step === "status");
-    el("start-scan").classList.toggle("hidden", hideScan);
-    el("reader").classList.toggle("hidden", hideScan);
+      // After updating UI, manage scanner automatically
+      if (step === "status") {
+        stopScanner();
+      } else {
+        // employee or project step
+        startScanner();
+      }
 
     }
 
@@ -148,7 +166,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return "completed";
     }
 
-/* Function to clear the form and update debug */
+/* Function to clear the form*/
 
     function clearForm() {
       el("qr-result").innerText = "None";
@@ -167,37 +185,39 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       vesselData = null;
       employeeData = null;
       qrScanned = false;
-
-      debug("Cleared. Ready.");
     }
 
 /* Function to parse the scanned QR code when scan succeeded */
 
     function onScanSuccess(decodedText) {
         const text = decodedText.trim();
+
+        // Ignore repeated reads of the same QR within a short window
+        if (shouldIgnoreDuplicate(text)) return;
+
         el("qr-result").innerText = text;
 
         const isEmployee = text.startsWith("EMP;");
 
         // Enforce step order
         if (currentStep === "employee" && !isEmployee) {
-            alert("Please scan EMPLOYEE QR first (EMP;EmpNo;Name;Station).");
-            return;
+          safeAlert("Please scan EMPLOYEE QR first (EMP;EmpNo;Name;Station).");
+          return;
         }
         if (currentStep === "project" && isEmployee) {
-            alert("Employee already scanned. Now scan PROJECT QR (D1;...;Refrigerant).");
-            return;
+          safeAlert("Employee already scanned. Now scan PROJECT QR (D1;...;Refrigerant).");
+          return;
         }
         if (currentStep === "status") {
-            alert("Status page: scanning is disabled. Submit to continue.");
-            return;
+          safeAlert("Status page: scanning is disabled. Submit to continue.");
+          return;
         }
 
         // EMPLOYEE QR: EMP;EmpNo;Name;Station
         if (isEmployee) {
             const parts = text.split(";");
             if (parts.length !== 4) {
-            alert("Invalid Employee QR format! Use: EMP;EmpNo;Name;Station");
+            safeAlert("Invalid Employee QR format! Use: EMP;EmpNo;Name;Station");
             return;
             }
 
@@ -207,9 +227,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             el("empName").innerText = employeeName;
             el("empNo").innerText = employeeNumber;
             el("empStation").innerText = station;
-
-            debug({ employeeScanned: employeeData });
-            debug("Employee scanned. Press Submit to continue.");
 
 
         } else {
@@ -229,9 +246,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             el("materialNumber").innerText = materialNumber;
             el("serialNumber").innerText = serialNumber;
 
-            debug({ projectScanned: vesselData });
-            debug("Project scanned. Press Submit to continue.");
-
         }
 
         // stop scanner after successful scan
@@ -243,14 +257,24 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
     function onScanFailure(_) {}
     
-    /* Starts QR code scanning when scan qr code button is pressed */
-    el("start-scan").addEventListener("click", () => {
-      if (!html5QrcodeScanner) {
-        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
-        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-        debug("Scanner started...");
+   function startScanner() {
+      if (currentStep === "status") return; // scanning disabled on status step
+      if (html5QrcodeScanner) return;
+
+      html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+      html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    }
+
+    async function stopScanner() {
+      if (!html5QrcodeScanner) return;
+      try {
+        await html5QrcodeScanner.clear();
+      } catch (e) {
+        console.warn("Scanner clear failed:", e);
+      } finally {
+        html5QrcodeScanner = null;
       }
-    });
+    }
 
     // EMPLOYEE page submit → go to project page
     el("to-project").addEventListener("click", () => {
@@ -281,13 +305,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     // If QR code not scanned OR vessel data is empty
     if (!qrScanned || !vesselData) {
       alert("Scan Project QR first!");
-      debug("Blocked: project not scanned");
       return;
     }
     // If employee data is empty
     if (!employeeData) {
       alert("Scan Employee QR first!");
-      debug("Blocked: employee not scanned");
       return;
     }
 
@@ -305,11 +327,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     }
 
     try {
-      debug({ step: "validating", serial, station, status });
 
       const phase = getPhaseFromStatus(status);
       const state = await getStationState(db, serial, station, phase);
-      debug({ validation: { serial, station, status, state } });
 
       // Check PROCESS state only for normal process
       if (phase === "process") {
@@ -353,17 +373,13 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         createdAt: serverTimestamp()
       };
 
-      debug({ step: "saving", payload });
-
       const docRef = await addDoc(collection(db, "processLogs"), payload);
 
-      debug({ saved: true, docId: docRef.id });
       alert("Saved!");
       clearForm();
       setStep("employee");
     } catch (err) {
       console.error(err);
-      debug({ error: err?.message || String(err), code: err?.code || null });
 
       // Most common: index not ready
       if (err?.code === "failed-precondition" && (err?.message || "").toLowerCase().includes("index")) {
@@ -380,4 +396,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     }
 });
 
-    debug("Ready.");
+window.addEventListener("DOMContentLoaded", () => {
+  // start scanning immediately on load (employee step)
+  startScanner();
+});

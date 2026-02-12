@@ -163,7 +163,7 @@ button.secondary:hover, #clear-data:hover{
   background:#77c542;
 }
 
-/* Hint + Debug */
+/* Hint and Debug */
 .hint{
   margin: 6px 0 10px;   /* gap from label and input */
   font-size: 12px;
