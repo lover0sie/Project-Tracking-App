@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QR Project Tracking</title>
+  <title>Project Tracking App</title>
 
   <!-- QR library -->
   <script src="https://unpkg.com/html5-qrcode"></script>
@@ -14,7 +14,7 @@
 
 <body>
   <div class="wrap">
-    <h2>QR Project Tracking</h2>
+    <h2>Project Tracking App</h2>
 
     <!-- Step indicator -->
     <div class="stepbar">
@@ -24,8 +24,9 @@
     </div>
 
     <!-- Shared scanner -->
-    <button id="start-scan">Scan QR Code</button>
     <div id="reader" style="width:100%; margin-top:10px;"></div>
+    <button id="start-scan" style="margin-bottom:18px;">Scan QR Code</button>
+    <div id="scan-status" class="scan-status hidden"></div>
 
     <div id="qr-result" class="hidden"></div>
 
@@ -35,6 +36,11 @@
       <div class="field"><b>Employee Name:</b> <span id="empName">-</span></div>
       <div class="field"><b>Employee No:</b> <span id="empNo">-</span></div>
       <div class="field"><b>Station:</b> <span id="empStation">-</span></div>
+
+      <label for="manpowerInput">Manpower</label>
+      <input id="manpowerInput" type="number" min="1" step="1" 
+            placeholder="e.g. 3" 
+            style="margin-bottom:18px;" />
 
       <button id="to-project" class="secondary">Submit</button>
     </section>
@@ -52,25 +58,55 @@
 
     <!-- SCREEN 3 -->
     <section id="screen-status" class="screen hidden">
-      <h3>Status</h3>
+      <h3>Description</h3>
 
-      <label>Status:</label>
-      <select id="status">
-        <option value="Start Process">Start Process</option>
-        <option value="End Process">End Process</option>
-        <option value="Start Rework">Start Rework</option>
-        <option value="End Rework">End Rework</option>
-      </select>
+      <div class="status-header">
+        <div><span class="status-label">Project</span><span id="statusProject">-</span></div>
+        <div><span class="status-label">Material</span><span id="statusMaterial">-</span></div>
+        <div><span class="status-label">Serial No</span><span id="statusSerial">-</span></div>
+        <div><span class="status-label">Station</span><span id="statusStation">-</span></div>
+        <div><span class="status-label">Manpower</span><span id="statusManpower">-</span></div>
+      </div>
 
-      <label>Notes:</label>
-      <div class="hint" id="notes-hint"></div>
-      <input type="text" id="notes" placeholder="Enter notes" />
+      <div class="label">Process</div>
+      <select id="processSelect"></select>
+
+      <div class="stopwatch-box">
+        <div class="sw-label">Stopwatch</div>
+        <div id="stopwatch">00:00:00</div>
+      </div>
       
-
-      <button id="submit-data">Submit</button>
+      <div class="btn-row">
+        <button id="btnStartProcess">Start</button>
+        <button id="btnStopProcess" disabled>Stop</button>
+      </div>
+        
     </section>
+
+    <!-- REMARKS POPUP MODAL -->
+    <div id="remarksModal" class="modal hidden">
+      <div class="modal-card">
+        <h3>Remarks (optional)</h3>
+
+        <textarea id="remarksInput" rows="4" placeholder="Type remarks here..."></textarea>
+
+        <div class="modal-actions">
+          <button id="remarksCancel" class="secondary">Cancel</button>
+          <button id="remarksSave">Save</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="js/app.js"></script>
   </div>
+
+    <!-- SAVING OVERLAY -->
+  <div id="saveOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <div class="spinner"></div>
+      <div id="saveOverlayText" class="overlay-text">Saving...</div>
+    </div>
+  </div>
+
 </body>
 </html>

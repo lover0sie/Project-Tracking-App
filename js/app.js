@@ -3,11 +3,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     import {
       getFirestore, 
       collection, 
-      addDoc, 
+      updateDoc,
+      doc,
+      addDoc,
       serverTimestamp,
       query, 
       where, 
-      orderBy, 
       getDocs, 
       limit
     } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
@@ -26,38 +27,127 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     const db = getFirestore(app);
     const el = (id) => document.getElementById(id);
 
-/* Helper functions 
-    1 - Trim status to remove spaces and convert to lower case
-    2 - Get phase from status either rework or process
-    3 - Check if the normalize status contains start and returns true
-    4 - Check if the normalize status contains end and returns true
+  /* Helper functions */
 
-*/
-    function normalizeStatus(status) {
-      return (status || "").trim().toLowerCase();
+  function resetAllData() {
+    stateEnabled = false;
+    localStorage.removeItem(STATE_KEY);
+
+    employeeData = null;
+    vesselData = null;
+    qrScanned = false;
+
+    currentRunId = null;
+    runRunning = false;
+    runStartEpoch = 0;
+    runAccumMs = 0;
+
+    if (runTimer) { clearInterval(runTimer); runTimer = null; }
+    renderStopwatch();
+
+    el("empName").innerText = "-";
+    el("empNo").innerText = "-";
+    el("empStation").innerText = "-";
+
+    el("projectName").innerText = "-";
+    el("description").innerText = "-";
+    el("materialNumber").innerText = "-";
+    el("serialNumber").innerText = "-";
+
+    if (el("statusProject")) el("statusProject").innerText = "-";
+    if (el("statusMaterial")) el("statusMaterial").innerText = "-";
+    if (el("statusSerial")) el("statusSerial").innerText = "-";
+    if (el("statusStation")) el("statusStation").innerText = "-";
+
+    if (el("manpowerInput")) el("manpowerInput").value = "";
+    if (el("statusManpower")) el("statusManpower").innerText = "-";
+
+    const sel = el("processSelect");
+    if (sel) {
+      sel.innerHTML = "";
+      sel.disabled = false;
     }
 
-    function getPhaseFromStatus(status) {
-      return normalizeStatus(status).includes("rework")
-        ? "rework"
-        : "process";
+    hideScanStatus();
+    if (el("qr-result")) el("qr-result").textContent = "";
+
+    stateEnabled = true;
+  }
+
+  function showSaveOverlay(text = "Saving...", isSuccess = false) {
+    const overlay = el("saveOverlay");
+    const txt = el("saveOverlayText");
+    if (!overlay || !txt) return;
+
+    txt.textContent = text;
+    txt.classList.toggle("success", !!isSuccess);
+
+    overlay.classList.remove("hidden");
+  }
+
+  function hideSaveOverlay() {
+    const overlay = el("saveOverlay");
+    if (!overlay) return;
+    overlay.classList.add("hidden");
+  }
+
+    function showScanStatus(msg) {
+      const box = el("scan-status");
+      if (!box) return;
+      box.textContent = msg;
+      box.classList.remove("hidden");
+  }
+
+  function hideScanStatus() {
+      const box = el("scan-status");
+      if (!box) return;
+      box.classList.add("hidden");
+      box.textContent = "";
+  }
+
+
+  const STATE_KEY = "qrAppState_v1";
+
+    function openRemarksModal() {
+      el("remarksModal").classList.remove("hidden");
+      el("remarksInput").value = "";
+      setTimeout(() => el("remarksInput").focus(), 0);
     }
 
-    function isStartLike(status) {
-      return normalizeStatus(status).includes("start");
+    function closeRemarksModal() {
+      el("remarksModal").classList.add("hidden");
     }
 
-    function isEndLike(status) {
-      return normalizeStatus(status).includes("end");
-    }
+    function saveState() {
+    if (!stateEnabled) return; //  block saving completely when disabled
+
+    const state = {
+      currentStep,
+      employeeData,
+      vesselData,
+      currentRunId,
+      runRunning,
+      runStartEpoch,
+      runAccumMs
+    };
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  }
 
 /* Initialize variables */
 
-    let html5QrcodeScanner = null;
+    let html5Qr = null;
+    let scanning = false;
     let vesselData = null;   // vessel
     let employeeData = null; // employee
+    let suppressNextSave = false;
     let qrScanned = false;
-    let started = false;
+    
+    // Process run state
+    let currentRunId = null;      // Firestore doc id for the running process
+    let runStartEpoch = 0;        // epoch for stopwatch
+    let runTimer = null;
+    let runRunning = false;
+    let runAccumMs = 0;    
 
     // Steps: "employee" -> "project" -> "status"
     let currentStep = "employee";
@@ -66,6 +156,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     let lastDecodedText = "";
     let lastDecodedAt = 0;
     let alertLock = false;
+
+    let stateEnabled = true;
 
     function safeAlert(msg, cooldownMs = 1500) {
       if (alertLock) return;
@@ -82,7 +174,126 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return same;
     }
 
-    function setStep(step) {
+    // Set process to stations
+    const PROCESS_BY_STATION = {
+      "PV 1": [
+        "Hole Bevelling", 
+        "Connector welding", 
+        "Fitting and welding distribution box", 
+        "Tube support and bush fitting tube sheet fitting",
+        "Tubesheet welding",
+        "Bracket and attachment welding",
+        "Unit side plate and base welding",
+        "Tube slotting and expansion",
+        "Tube slotting and expansion",
+      ],
+
+      // My own testing
+      "Station X": [
+        "Process 1", 
+        "Process 2", 
+        "Process 3", 
+        "Process 4"],
+    };
+
+    // Load the station drop down menu
+      function loadProcessesForStation(station) {
+      const list = PROCESS_BY_STATION[station] || ["General Process"];
+      const sel = el("processSelect");
+      sel.innerHTML = "";
+      list.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        sel.appendChild(opt);
+      });
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STATE_KEY);
+      if (!raw) return;
+
+      try {
+        const state = JSON.parse(raw);
+
+        currentStep = state.currentStep || "employee";
+        employeeData = state.employeeData || null;
+        vesselData = state.vesselData || null;
+
+        currentRunId = state.currentRunId || null;
+        runRunning = !!state.runRunning;
+        runStartEpoch = state.runStartEpoch || 0;
+        runAccumMs = state.runAccumMs || 0;
+
+        // restore UI
+        if (employeeData) {
+          el("empName").innerText = employeeData.employeeName;
+          el("empNo").innerText = employeeData.employeeNumber;
+          el("empStation").innerText = employeeData.station;
+          loadProcessesForStation(employeeData.station);
+        }
+
+        if (vesselData) {
+          el("projectName").innerText = vesselData.projectName;
+          el("description").innerText = vesselData.description;
+          el("materialNumber").innerText = vesselData.materialNumber;
+          el("serialNumber").innerText = vesselData.serialNumber;
+        }
+
+        setStep(currentStep);
+
+        // resume stopwatch if running
+        if (runRunning) {
+          runTimer = setInterval(renderStopwatch, 200);
+        }
+
+        renderStopwatch();
+
+      } catch (e) {
+        console.error("State load failed", e);
+        localStorage.removeItem(STATE_KEY);
+      }
+    }
+
+    function restoreUIFromState() {
+      // Restore employee UI
+      if (employeeData) {
+        el("empName").innerText = employeeData.employeeName || "-";
+        el("empNo").innerText = employeeData.employeeNumber || "-";
+        el("empStation").innerText = employeeData.station || "-";
+        loadProcessesForStation(employeeData.station);
+      }
+
+      // Restore project UI
+      if (vesselData) {
+        el("projectName").innerText = vesselData.projectName || "-";
+        el("description").innerText = vesselData.description || "-";
+        el("materialNumber").innerText = vesselData.materialNumber || "-";
+        el("serialNumber").innerText = vesselData.serialNumber || "-";
+      }
+
+      // Go to correct screen (this also stops scanner if status)
+      setStep(currentStep);
+
+      // Resume stopwatch display/tick if it was running
+      renderStopwatch();
+      if (runRunning && !runTimer) {
+        if (!runTimer) runTimer = setInterval(renderStopwatch, 200);
+        // If a run is active, keep buttons consistent
+        el("btnStartProcess").disabled = true;
+        el("btnStopProcess").disabled = false;
+      }
+
+      // disable process dropdown if running
+      const proc = el("processSelect");
+      if (proc) proc.disabled = runRunning;
+    }
+
+
+    // Function for changing screen
+    // Function for changing screen
+    async function setStep(step) {
+      hideScanStatus();
       currentStep = step;
 
       // Screens
@@ -95,96 +306,70 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       el("step2").classList.toggle("active", step === "project");
       el("step3").classList.toggle("active", step === "status");
 
-      // Update notes requirement hint
-      updateNotesRuleUI();
+      const inStatus = (step === "status");
 
-      // hide scan button when at status step
-      const hideScan = (step === "status");
-      el("reader").classList.toggle("hidden", hideScan);
+      // Hide scanner UI in Status
+      el("reader").classList.toggle("hidden", inStatus);
 
-      // After updating UI, manage scanner automatically
-      if (step === "status") {
-        stopScanner();
-      } else {
-        // employee or project step
-        startScanner();
+      // Disable/hide Scan button in Status
+      const scanBtn = el("start-scan");
+      if (scanBtn) {
+        scanBtn.disabled = inStatus;
+        scanBtn.classList.toggle("hidden", inStatus); // optional
       }
 
+      if (inStatus) {
+        await stopScanner(); //  now valid
+
+        renderStopwatch();
+
+        el("btnStartProcess").disabled = runRunning;
+        el("btnStopProcess").disabled = !runRunning;
+
+        if (!runRunning) {
+          currentRunId = null;
+          runAccumMs = 0;
+          runStartEpoch = 0;
+        }
+
+        // show project info on top
+        if (employeeData) {
+          if (el("statusStation")) el("statusStation").innerText = employeeData.station || "-";
+          if (el("statusManpower")) el("statusManpower").innerText = employeeData.manpower ?? "-";
+        }
+
+        if (vesselData) {
+          if (el("statusProject")) el("statusProject").innerText = vesselData.projectName || "-";
+          if (el("statusMaterial")) el("statusMaterial").innerText = vesselData.materialNumber || "-";
+          if (el("statusSerial")) el("statusSerial").innerText = vesselData.serialNumber || "-";
+        }
+
+        // lock process dropdown when running
+        const proc = el("processSelect");
+        if (proc) proc.disabled = runRunning;
+
+      }
+
+      if (suppressNextSave) suppressNextSave = false;
+      else saveState();
     }
 
-    function updateNotesRuleUI() {
-    const status = el("status")?.value || "Start Process";
-    const phase = getPhaseFromStatus(status);
-
-    // Process notes optional, Rework notes compulsory
-    const mustHaveNotes = phase === "rework";
-
-    el("notes-hint").textContent = mustHaveNotes
-        ? "Notes are REQUIRED for Rework."
-        : "Notes are OPTIONAL for Process.";
-    }
 
 
 /* Get the station state from firestore */ 
 
-    async function getStationState(db, serialNumber, station, phase) {
+    async function findActiveRun(serialNumber, station, processName) {
       const q = query(
-        collection(db, "processLogs"),
+        collection(db, "processRuns"),
         where("serialNumber", "==", serialNumber),
-        where("location", "==", station),
-        orderBy("createdAt", "asc"),
-        limit(100)
+        where("station", "==", station),
+        where("processName", "==", processName),
+        where("status", "==", "running"),
+        limit(1)
       );
-
       const snap = await getDocs(q);
-
-      let started = false;
-      let completed = false;
-
-      snap.forEach(doc => {
-        const data = doc.data();
-        const status = (data.status || "").toLowerCase();
-
-        // Infer phase from STATUS, not from caller
-        const eventPhase = status.includes("rework") ? "rework" : "process";
-
-        // Ignore other phase completely
-        if (eventPhase !== phase) return;
-
-        // Project has started if the status includes start
-        if (status.includes("start")) started = true;
-
-        // Project has completed if the status includes end and started is true
-        if (status.includes("end") && started) completed = true;
-      });
-
-      // If the project has not started, return idle status
-      if (!started) return "idle";
-      
-      if (started && !completed) return "running";
-
-      return "completed";
-    }
-
-/* Function to clear the form*/
-
-    function clearForm() {
-      el("qr-result").innerText = "None";
-      el("projectName").innerText = "-";
-      el("description").innerText = "-";
-      el("materialNumber").innerText = "-";
-      el("serialNumber").innerText = "-";
-
-      el("empName").innerText = "-";
-      el("empNo").innerText = "-";
-      el("empStation").innerText = "-";
-
-      el("notes").value = "";
-      el("status").selectedIndex = 0;
-
-      vesselData = null;
-      employeeData = null;
-      qrScanned = false;
+      if (snap.empty) return null;
+      return { id: snap.docs[0].id, ...snap.docs[0].data() };
     }
 
 /* Function to parse the scanned QR code when scan succeeded */
@@ -224,10 +409,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             const [, employeeNumber, employeeName, station] = parts;
             employeeData = { employeeNumber, employeeName, station };
 
+            showScanStatus("QR successfully scanned.");
+            stopScanner();          // stop camera
+            saveState();            // keep everything
+
             el("empName").innerText = employeeName;
             el("empNo").innerText = employeeNumber;
             el("empStation").innerText = station;
 
+            loadProcessesForStation(employeeData.station);
+            
 
         } else {
             // PROJECT QR: D1;Project Name; Description; Material Number; Serial Number; Model; Chiller Type; Refrigerant
@@ -238,7 +429,21 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             }
 
             const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
-            vesselData = { version, projectName, description, materialNumber, serialNumber, model, type, refrigerant };
+            vesselData = { 
+              version, 
+              projectName, 
+              description, 
+              materialNumber, 
+              serialNumber, 
+              model, 
+              type, 
+              refrigerant 
+            };
+
+            showScanStatus("QR successfully scanned.");
+            stopScanner();          // stop camera
+            saveState();            // keep everything
+
             qrScanned = true;
 
             el("projectName").innerText = projectName;
@@ -248,41 +453,144 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
         }
 
-        // stop scanner after successful scan
-        if (html5QrcodeScanner) {
-            html5QrcodeScanner.clear().then(() => (html5QrcodeScanner = null));
-        }
         }
 
 
     function onScanFailure(_) {}
-    
-   function startScanner() {
-      if (currentStep === "status") return; // scanning disabled on status step
-      if (html5QrcodeScanner) return;
 
-      html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
-      html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-    }
+    function updateScanButtonUI() {
+      const btn = el("start-scan");
+      if (!btn) return;
 
-    async function stopScanner() {
-      if (!html5QrcodeScanner) return;
-      try {
-        await html5QrcodeScanner.clear();
-      } catch (e) {
-        console.warn("Scanner clear failed:", e);
-      } finally {
-        html5QrcodeScanner = null;
+      if (scanning) {
+        btn.textContent = "Stop Scanning";
+        btn.style.background = "#dc2626"; // red
+        btn.style.color = "#fff";
+      } else {
+        btn.textContent = "Start Scanning";
+        btn.style.background = "#2563eb"; // blue
+        btn.style.color = "#fff";
       }
     }
 
+    
+   async function startScanner() {
+      if (currentStep === "status") return;
+      if (scanning) return;
+
+      if (!html5Qr) html5Qr = new Html5Qrcode("reader");
+
+      try {
+        const cameras = await Html5Qrcode.getCameras();
+        if (!cameras || cameras.length === 0) {
+          alert("No camera found.");
+          return;
+        }
+
+        scanning = true;
+        updateScanButtonUI();
+
+        await html5Qr.start(
+          { deviceId: { exact: cameras[0].id } }, // pick first camera
+          { fps: 10, qrbox: 250 },
+          (decodedText) => onScanSuccess(decodedText),
+          () => {}
+        );
+      } catch (err) {
+        console.error(err);
+        scanning = false;
+        updateScanButtonUI();
+        alert("Failed to start camera. Check browser permissions.");
+      }
+    }
+
+   async function stopScanner() {
+    if (!html5Qr || !scanning) {
+      scanning = false;
+      updateScanButtonUI();
+      return;
+    }
+
+    try {
+      await html5Qr.stop();
+      await html5Qr.clear();
+    } catch (err) {
+      console.warn("Stop scanner error:", err);
+    } finally {
+      scanning = false;
+      updateScanButtonUI();
+    }
+  }
+
+    let swRunning = false;
+    let swStartEpoch = 0;   // when started
+    let swAccumMs = 0;      // accumulated time
+    let swTimer = null;
+
+    function formatMs(ms) {
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+    }
+
+
+    function getElapsedMs() {
+      if (!runRunning) return runAccumMs;
+      return runAccumMs + (Date.now() - runStartEpoch);
+    }
+
+    // update UI
+    function renderStopwatch() {
+      el("stopwatch").textContent = formatMs(getElapsedMs());
+    }
+
+    
+    function startStopwatch() {
+      if (runRunning) return;
+      runRunning = true;
+      runStartEpoch = Date.now();
+      runTimer = setInterval(renderStopwatch, 200);
+      renderStopwatch();
+      saveState();
+    }
+
+   function stopStopwatch() {
+      if (!runRunning) return;
+      runAccumMs += Date.now() - runStartEpoch;
+      runRunning = false;
+      clearInterval(runTimer);
+      runTimer = null;
+      renderStopwatch();
+    }
+
+    // refresh display when returning from background
+        document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) renderStopwatch();
+    });
+
+    // initial display
+    renderStopwatch();
+
+
     // EMPLOYEE page submit → go to project page
-    el("to-project").addEventListener("click", () => {
+    el("to-project").addEventListener("click", async () => {
       if (!employeeData) {
         alert("Please scan employee QR first.");
         return;
       }
-      setStep("project");
+
+      const manpower = Number(el("manpowerInput").value || 0);
+      if (!Number.isFinite(manpower) || manpower <= 0) {
+        alert("Please enter Manpower (must be 1 or more).");
+        return;
+      }
+
+      employeeData.manpower = manpower; //  store inside employeeData
+      saveState();
+
+      await setStep("project");
     });
 
     // PROJECT page submit → go to status page
@@ -295,108 +603,143 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     });
 
 
-    el("status").addEventListener("change", updateNotesRuleUI);
+    el("start-scan").addEventListener("click", async () => {
+      if (currentStep === "status") return;
 
-    
+      
+      hideScanStatus();
 
-    /* Submit data when submit button is clicked */
-    el("submit-data").addEventListener("click", async () => {
+      if (scanning) await stopScanner();
+      else await startScanner();
+    });
 
-    // If QR code not scanned OR vessel data is empty
-    if (!qrScanned || !vesselData) {
-      alert("Scan Project QR first!");
-      return;
-    }
-    // If employee data is empty
-    if (!employeeData) {
-      alert("Scan Employee QR first!");
-      return;
-    }
+  el("btnStartProcess").addEventListener("click", async () => {
+    if (!employeeData) return alert("Scan employee QR first.");
+    if (!vesselData) return alert("Scan project QR first.");
 
-    // Initilaize serial, station and status
-    const serial = vesselData.serialNumber;
+    const serialNumber = vesselData.serialNumber;
     const station = employeeData.station;
-    const status = el("status").value;
-    const notes = (el("notes").value || "").trim();
-    const phase = getPhaseFromStatus(status);
+    const processName = el("processSelect").value;
 
-    // Notes rule: REQUIRED for rework, optional for process
-    if (phase === "rework" && notes.length === 0) {
-    alert("Notes are required for Rework (Start/End Rework).");
-    return;
+    // prevent double-running same process
+    const active = await findActiveRun(serialNumber, station, processName);
+    if (active) {
+      currentRunId = active.id; // optional: attach to it
+      saveState();
+      alert("This process is already running.");
+      return;
     }
 
-    try {
+    const payload = {
+      serialNumber,
+      station,
+      processName,
+      status: "running",
 
-      const phase = getPhaseFromStatus(status);
-      const state = await getStationState(db, serial, station, phase);
+      startedByName: employeeData.employeeName,
+      startedByNumber: employeeData.employeeNumber,
 
-      // Check PROCESS state only for normal process
-      if (phase === "process") {
-        const processState = await getStationState(db, serial, station, "process");
+      manpower: employeeData.manpower ?? null, // ✅ add this
 
-        if (status === "Start Process" && processState !== "idle") {
-          alert(`Error: Project ${serial} at ${station} is already running.`);
-          return;
-        }
+      startAt: serverTimestamp(),
+      startEpochMs: Date.now(),
 
-        if (status === "End Process" && processState !== "running") {
-          alert(`Error: Project ${serial} at ${station} is not running yet.`);
-          return;
-        }
-      }
+      projectName: vesselData.projectName,
+      materialNumber: vesselData.materialNumber,
+      description: vesselData.description,
+      version: vesselData.version
+    };
 
-      // Check REWORK state separately
-      if (phase === "rework") {
-        const reworkState = await getStationState(db, serial, station, "rework");
 
-        if (status.toLowerCase().includes("start") && reworkState === "running") {
-          alert(`Error: Rework for Project ${serial} is already running.`);
-          return;
-        }
+    const ref = await addDoc(collection(db, "processRuns"), payload);
+    currentRunId = ref.id;
 
-        if (status.toLowerCase().includes("end") && reworkState !== "running") {
-          alert(`Error: Rework for Project ${serial} is not running yet.`);
-          return;
-        }
-      }
+    saveState();
 
-      // Send data to firestore
-      const payload = {
-        ...vesselData,
-        location: station,
-        status,
-        notes,
-        employeeName: employeeData.employeeName,
-        employeeNumber: employeeData.employeeNumber,
-        employeeStation: employeeData.station,
-        createdAt: serverTimestamp()
-      };
+    // UI
+    el("processSelect").disabled = true;
+    el("btnStartProcess").disabled = true;
+    el("btnStopProcess").disabled = false;
 
-      const docRef = await addDoc(collection(db, "processLogs"), payload);
+    // stopwatch
+    runAccumMs = 0;
+    startStopwatch();
+  });
 
-      alert("Saved!");
-      clearForm();
-      setStep("employee");
-    } catch (err) {
-      console.error(err);
+let pendingStop = null; // stores {runId, durationMs} until modal saved
 
-      // Most common: index not ready
-      if (err?.code === "failed-precondition" && (err?.message || "").toLowerCase().includes("index")) {
-        alert("Firestore index is still building. Wait until it becomes ENABLED, then try again.");
-        return;
-      }
+el("btnStopProcess").addEventListener("click", async () => {
+  if (!currentRunId) return alert("No running process to stop.");
 
-      if (err?.code === "permission-denied") {
-        alert("Permission denied. Check Firestore Rules (write/read).");
-        return;
-      }
+  // DON'T stop stopwatch here
+  pendingStop = {
+    runId: currentRunId,
+    durationMs: getElapsedMs() // capture current duration as "snapshot"
+  };
 
-      alert("Error: " + (err?.message || err));
-    }
+  openRemarksModal();
 });
 
+el("remarksCancel").addEventListener("click", () => {
+  pendingStop = null;
+  closeRemarksModal();
+  // stopwatch was never stopped, so it keeps moving
+});
+
+el("remarksSave").addEventListener("click", async () => {
+  if (!pendingStop) return closeRemarksModal();
+
+  const { runId } = pendingStop;
+  const remarks = (el("remarksInput").value || "").trim();
+  pendingStop = null;
+
+  // final duration at save moment
+  const durationMs = getElapsedMs();
+  stopStopwatch();
+
+  closeRemarksModal();
+  showSaveOverlay("Saving process...");
+
+  try {
+    await updateDoc(doc(db, "processRuns", runId), {
+      status: "completed",
+      endAt: serverTimestamp(),
+      endEpochMs: Date.now(),
+      durationMs,
+      remarks
+    });
+
+    showSaveOverlay("Process saved", true);
+
+    setTimeout(async () => {
+      hideSaveOverlay();
+      resetAllData();
+      await setStep("employee");
+    }, 1200);
+
+  } catch (err) {
+    console.error(err);
+    hideSaveOverlay();
+    alert("Error saving: " + (err?.message || err));
+  }
+
+  el("processSelect").disabled = false;
+});
+
+
+
 window.addEventListener("DOMContentLoaded", () => {
-  // start scanning immediately on load (employee step)
-  startScanner();
+  loadState();
+  restoreUIFromState();
+
+  // DO NOT auto start scanner
+  stopScanner();
+  updateScanButtonUI();
+});
+
+window.addEventListener("beforeunload", (e) => {
+  if (runRunning) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
 });

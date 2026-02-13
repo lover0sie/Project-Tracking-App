@@ -108,7 +108,7 @@ h3{
 label{
   display:block;
   margin: 6px 0 6px;
-  font-size:13px;
+  font-size:14px;
   font-weight:700;
   color:#374151;
 }
@@ -141,15 +141,18 @@ button{
   transition: transform .05s ease, background .12s ease, border-color .12s ease;
 }
 
-#start-scan, #submit-data{
-  background:var(--accent);
-  color:#fff;
-}
-#start-scan:hover, #submit-data:hover{
-  background:var(--accentHover);
-}
 button:active{
   transform: translateY(1px);
+}
+
+#start-scan{
+  background:#2563eb;
+  color:#fff;
+  font-weight:700;
+}
+
+#start-scan:hover{
+  filter:brightness(1.15);
 }
 
 /* Secondary buttons */
@@ -199,4 +202,298 @@ select{
   background-repeat: no-repeat;
   padding-right: 36px; /* space for arrow */
 }
+
+/* Center layout for Screen 3 (status) */
+#screen-status {
+  text-align: center;
+}
+
+#stopwatch {
+  display: inline-block;     /* makes it center nicely */
+  margin: 14px auto 18px;
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+/* Keep buttons same width and centered */
+#btnStartProcess,
+#btnStopProcess {
+  width: 100%;
+  max-width: 320px;          /* adjust if you want wider/narrower */
+  display: block;
+  margin: 10px auto;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.05s ease;
+}
+
+#btnStartProcess:active,
+#btnStopProcess:active {
+  transform: scale(0.99);
+}
+
+/* Optional: center the dropdown too */
+#processSelect {
+  width: 100%;
+  max-width: 320px;
+  margin: 8px auto 6px;
+  display: block;
+}
+
+/* Start = green */
+#btnStartProcess {
+  background: #16a34a; /* green */
+  color: #fff;
+}
+
+#btnStartProcess:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+/* Stop = red */
+#btnStopProcess {
+  background: #dc2626; /* red */
+  color: #fff;
+}
+
+#btnStopProcess:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+/* Disabled look */
+#btnStartProcess:disabled,
+#btnStopProcess:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* Modal backdrop */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 9999;
+}
+
+/* Modal card */
+.modal-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  text-align: left;
+}
+
+#remarksInput {
+  width: 100%;
+  padding: 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radiusSm);
+  font-size: 15px;
+  outline: none;
+  resize: vertical;
+}
+
+#remarksInput:focus {
+  border-color: rgba(37,99,235,0.55);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+}
+
+#remarksSave{
+  background: #2563eb;
+  color: #fff;
+  border: none;
+}
+#remarksSave:hover{
+  filter: brightness(1.15);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.modal-actions button {
+  width: 100%;
+}
+
+.scan-status{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:12px;
+  font-size:14px;
+  font-weight:700;
+  border:1px solid #bbf7d0;
+  background:#ecfdf5;
+  color:#065f46;
+  text-align:center;
+}
+
+/* Full-screen overlay */
+.overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(17,24,39,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 9999;
+}
+
+.overlay-card{
+  width: min(360px, 92vw);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 16px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.spinner{
+  width: 44px;
+  height: 44px;
+  margin: 4px auto 12px;
+  border-radius: 999px;
+  border: 5px solid #e5e7eb;
+  border-top-color: #2563eb; /* blue */
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin{
+  to{ transform: rotate(360deg); }
+}
+
+.overlay-text{
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
+}
+
+/* success state (optional styling) */
+.overlay-text.success{
+  color: #065f46;
+}
+
+.status-header{
+  background:#f8fafc;
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:12px;
+  margin-bottom:12px;
+  text-align:left;
+  font-size:14px;
+  line-height:1.6;
+}
+
+.status-header b{
+  color:#374151;
+}
+
+.status-header span{
+  font-weight:700;
+  color:#111827;
+}
+
+/* Stopwatch box */
+.stopwatch-box{
+  max-width: 360px;
+  margin: 12px auto 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.stopwatch-box .sw-label{
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  margin-bottom: 8px;
+}
+
+.stopwatch-box #stopwatch{
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+
+/* Start/Stop side-by-side */
+.btn-row{
+  display: flex;
+  gap: 12px;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.btn-row button{
+  flex: 1;
+  width: auto;      /* override your global width:100% */
+  margin: 0;        /* remove auto margin */
+}
+
+.btn-row #btnStartProcess,
+.btn-row #btnStopProcess{
+  max-width: none;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.status-header{
+  background:#f8fafc;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:14px;
+  margin-bottom:14px;
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:10px 16px;
+  align-items:center;
+}
+
+/* label style = same as h3 */
+.status-label{
+  display:block;
+  font-size:11px;
+  font-weight:800;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  margin-bottom:2px;
+}
+
+/* value style */
+.status-header span:last-child{
+  display:block;
+  font-size:15px;
+  font-weight:700;
+  color:#111827;
+}
+
+
+
+
+
+
+
 
