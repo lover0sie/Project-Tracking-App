@@ -29,6 +29,50 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
   /* Helper functions */
 
+    function getMYDateKey(d = new Date()) {
+    // "YYYY-MM-DD" in Asia/Kuala_Lumpur time
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kuala_Lumpur",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(d);
+
+    const y = parts.find(p => p.type === "year").value;
+    const m = parts.find(p => p.type === "month").value;
+    const day = parts.find(p => p.type === "day").value;
+    return `${y}-${m}-${day}`;
+  }
+
+  function getMYDayRange() {
+  // Build "today" in Asia/Kuala_Lumpur, then convert to Date objects.
+  const now = new Date();
+
+  // Get MY date parts
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kuala_Lumpur",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+
+  const y = Number(parts.find(p => p.type === "year").value);
+  const m = Number(parts.find(p => p.type === "month").value);
+  const d = Number(parts.find(p => p.type === "day").value);
+
+  // Create MY midnight and next midnight in *local JS Date* by using UTC then offsetting is messy.
+  // Easier: use Date.UTC with MY date, then treat as "MY day" boundaries by formatting.
+  // Practical approach: compute boundaries by taking now, and building midnight in MY timezone via string.
+  const myDateStr = `${String(y).padStart(4,"0")}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+
+  // Turn "YYYY-MM-DDT00:00:00+08:00" into Date
+  const start = new Date(`${myDateStr}T00:00:00+08:00`);
+  const end   = new Date(`${myDateStr}T24:00:00+08:00`);
+
+  return { start, end, myDateStr };
+}
+
+
   function resetAllData() {
     stateEnabled = false;
     localStorage.removeItem(STATE_KEY);
@@ -180,23 +224,29 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     // Set process to stations
     const PROCESS_BY_STATION = {
       "PV 1": [
-        "Hole Bevelling", 
-        "Connector welding", 
-        "Fitting and welding distribution box", 
-        "Tube support and bush fitting tube sheet fitting",
-        "Tubesheet welding",
-        "Bracket and attachment welding",
-        "Unit side plate and base welding",
-        "Tube slotting and expansion",
-        "Tube slotting and expansion",
+        "6 - Hole bevelling", 
+        "7 - Connector welding",
+        "8 - Fitting internal plate and GMAW C&B",
+        "9 - Fitting and welding distribution box", 
+        "10 - Tube support and bush fitting, tube sheet fitting",
+        "11 - Tubesheet welding",
+        "12 - Bracket and attachment welding",
+        "13 - Unit side plate and base welding",
+        "14 - Tube slotting and expansion",
       ],
 
       // My own testing
-      "Station X": [
-        "Process 1", 
-        "Process 2", 
-        "Process 3", 
-        "Process 4"],
+      "PV 2": [
+        "6 - Hole bevelling", 
+        "7 - Connector welding",
+        "8 - Fitting internal plate and GMAW C&B",
+        "9 - Fitting and welding distribution box", 
+        "10 - Tube support and bush fitting, tube sheet fitting",
+        "11 - Tubesheet welding",
+        "12 - Bracket and attachment welding",
+        "13 - Unit side plate and base welding",
+        "14 - Tube slotting and expansion",
+      ]
     };
 
     // Load the station drop down menu
@@ -292,8 +342,31 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       if (proc) proc.disabled = runRunning;
     }
 
+    // find anything that run by today
+    async function findAnyRunTodayByStartAt(serialNumber, station, processName) {
+      const { start, end, myDateStr } = getMYDayRange();
 
-    // Function for changing screen
+      const q = query(
+        collection(db, "processRuns"),
+        where("serialNumber", "==", serialNumber),
+        where("station", "==", station),
+        where("processName", "==", processName),
+
+        // "today" filter (Malaysia day)
+        where("startAt", ">=", start),
+        where("startAt", "<", end),
+
+        // block if running or completed
+        where("status", "in", ["running", "completed"]),
+        limit(1)
+      );
+
+      const snap = await getDocs(q);
+      if (snap.empty) return null;
+      return { myDateStr, id: snap.docs[0].id, ...snap.docs[0].data() };
+    }
+
+    
     // Function for changing screen
     async function setStep(step) {
       hideScanStatus();
@@ -374,6 +447,23 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       if (snap.empty) return null;
       return { id: snap.docs[0].id, ...snap.docs[0].data() };
     }
+
+/* Check if the process has ran in database */
+
+async function findCompletedRunToday(serialNumber, station, processName, runDate) {
+  const q = query(
+    collection(db, "processRuns"),
+    where("serialNumber", "==", serialNumber),
+    where("station", "==", station),
+    where("processName", "==", processName),
+    where("runDate", "==", runDate),
+    where("status", "==", "completed"),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
 
 /* Function to parse the scanned QR code when scan succeeded */
 
@@ -644,57 +734,63 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     });
 
   el("btnStartProcess").addEventListener("click", async () => {
-    if (!employeeData) return alert("Scan employee QR first.");
-    if (!vesselData) return alert("Scan project QR first.");
+    if (!employeeData) return showScanStatus("Scan employee QR first.", "err");
+    if (!vesselData) return showScanStatus("Scan project QR first.", "err");
 
     const serialNumber = vesselData.serialNumber;
     const station = employeeData.station;
     const processName = el("processSelect").value;
 
-    // prevent double-running same process
+    const runDate = getMYDateKey();
+
+    // 1) Block if currently running
     const active = await findActiveRun(serialNumber, station, processName);
     if (active) {
-      currentRunId = active.id; // optional: attach to it
-      saveState();
-      alert("This process is already running.");
+      showScanStatus("This process is already running.", "err");
       return;
     }
+
+    //2) Block if already completed today
+     const exists = await findAnyRunTodayByStartAt(serialNumber, station, processName);
+    if (exists) {
+      showScanStatus(
+        `Error: Already ran today (${exists.myDateStr}). Status: ${exists.status}`,
+        "err"
+      );
+      return;
+    }
+
+    // Disable changing process once you start
+    el("processSelect").disabled = true;
 
     const payload = {
       serialNumber,
       station,
       processName,
+      runDate,                 
       status: "running",
-
       startedByName: employeeData.employeeName,
       startedByNumber: employeeData.employeeNumber,
-
-      manpower: employeeData.manpower ?? null, // ✅ add this
-
       startAt: serverTimestamp(),
       startEpochMs: Date.now(),
-
       projectName: vesselData.projectName,
       materialNumber: vesselData.materialNumber,
       description: vesselData.description,
       version: vesselData.version
     };
 
-
     const ref = await addDoc(collection(db, "processRuns"), payload);
     currentRunId = ref.id;
 
     saveState();
 
-    // UI
-    el("processSelect").disabled = true;
     el("btnStartProcess").disabled = true;
     el("btnStopProcess").disabled = false;
 
-    // stopwatch
     runAccumMs = 0;
     startStopwatch();
-  });
+});
+
 
 let pendingStop = null; // stores {runId, durationMs} until modal saved
 
