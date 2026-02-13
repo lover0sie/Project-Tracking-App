@@ -481,17 +481,35 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       if (!html5Qr) html5Qr = new Html5Qrcode("reader");
 
       try {
-        const cameras = await Html5Qrcode.getCameras();
-        if (!cameras || cameras.length === 0) {
-          alert("No camera found.");
-          return;
-        }
-
         scanning = true;
         updateScanButtonUI();
 
+        // 1) Try force back camera (best for iPhone)
+        try {
+          await html5Qr.start(
+            { facingMode: "environment" }, //  back camera
+            { fps: 10, qrbox: 250 },
+            (decodedText) => onScanSuccess(decodedText),
+            () => {}
+          );
+          return; // success
+        } catch (e) {
+          // If facingMode fails on some devices, fall back to deviceId
+          console.warn("facingMode environment failed, falling back to deviceId...", e);
+        }
+
+        // 2) Fallback: pick a back camera from list
+        const cameras = await Html5Qrcode.getCameras();
+        if (!cameras || cameras.length === 0) {
+          throw new Error("No camera found.");
+        }
+
+        const backCam =
+          cameras.find(c => /back|rear|environment/i.test(c.label || "")) ||
+          cameras[cameras.length - 1];
+
         await html5Qr.start(
-          { facingMode: "environment" },   // back camera
+          { deviceId: { exact: backCam.id } },
           { fps: 10, qrbox: 250 },
           (decodedText) => onScanSuccess(decodedText),
           () => {}
@@ -504,20 +522,27 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
     }
 
+
    async function stopScanner() {
-    if (!html5Qr || !scanning) {
+    if (!html5Qr) {
       scanning = false;
       updateScanButtonUI();
       return;
     }
 
     try {
-      await html5Qr.stop();
+      if (scanning) {
+        await html5Qr.stop();
+      }
+
+      // Clear camera UI safely
       await html5Qr.clear();
+
     } catch (err) {
       console.warn("Stop scanner error:", err);
     } finally {
       scanning = false;
+      html5Qr = null;   // ⭐ IMPORTANT: reset instance for clean restart
       updateScanButtonUI();
     }
   }
