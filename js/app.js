@@ -491,7 +491,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         updateScanButtonUI();
 
         await html5Qr.start(
-          { deviceId: { exact: cameras[0].id } }, // pick first camera
+          { facingMode: "environment" },   // back camera
           { fps: 10, qrbox: 250 },
           (decodedText) => onScanSuccess(decodedText),
           () => {}
