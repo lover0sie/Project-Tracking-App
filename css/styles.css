@@ -331,18 +331,33 @@ select{
   width: 100%;
 }
 
-.scan-status{
-  margin-top:10px;
-  padding:10px 12px;
-  border-radius:12px;
-  font-size:14px;
-  font-weight:700;
-  border:1px solid #bbf7d0;
-  background:#ecfdf5;
-  color:#065f46;
-  text-align:center;
+#scan-status{
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 13px;
+  text-align: center;
+  border: 1px solid transparent;
 }
 
+#scan-status.ok{
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+
+#scan-status.err{
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+#scan-status.info{
+  background: #eff6ff;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
 /* Full-screen overlay */
 .overlay{
   position: fixed;

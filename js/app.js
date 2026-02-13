@@ -91,18 +91,21 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     overlay.classList.add("hidden");
   }
 
-    function showScanStatus(msg) {
-      const box = el("scan-status");
-      if (!box) return;
-      box.textContent = msg;
-      box.classList.remove("hidden");
+    function showScanStatus(msg, type = "info") {
+    const box = el("scan-status");
+    if (!box) return;
+
+    box.textContent = msg;
+    box.classList.remove("hidden", "ok", "err", "info");
+    box.classList.add(type); // "ok" | "err" | "info"
   }
 
   function hideScanStatus() {
-      const box = el("scan-status");
-      if (!box) return;
-      box.classList.add("hidden");
-      box.textContent = "";
+    const box = el("scan-status");
+    if (!box) return;
+    box.classList.add("hidden");
+    box.textContent = "";
+    box.classList.remove("ok", "err", "info");
   }
 
 
@@ -385,16 +388,18 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         const isEmployee = text.startsWith("EMP;");
 
         // Enforce step order
+        // Enforce step order (NO popup)
         if (currentStep === "employee" && !isEmployee) {
-          safeAlert("Please scan EMPLOYEE QR first (EMP;EmpNo;Name;Station).");
+          showScanStatus("Wrong QR. Please scan EMPLOYEE QR.", "err");
           return;
         }
         if (currentStep === "project" && isEmployee) {
-          safeAlert("Employee already scanned. Now scan PROJECT QR (D1;...;Refrigerant).");
+          showScanStatus("Wrong QR. Please scan PROJECT QR.", "err");
+          setTimeout(hideScanStatus, 2000);
           return;
         }
         if (currentStep === "status") {
-          safeAlert("Status page: scanning is disabled. Submit to continue.");
+          showScanStatus("Scanning is disabled on Status page.", "err");
           return;
         }
 
@@ -542,7 +547,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       console.warn("Stop scanner error:", err);
     } finally {
       scanning = false;
-      html5Qr = null;   // ⭐ IMPORTANT: reset instance for clean restart
+      html5Qr = null;   //  IMPORTANT: reset instance for clean restart
       updateScanButtonUI();
     }
   }
