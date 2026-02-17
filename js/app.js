@@ -733,63 +733,84 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
       else await startScanner();
     });
 
+  let startInFlight = false;
   el("btnStartProcess").addEventListener("click", async () => {
+    if (startInFlight || runRunning) return;
     if (!employeeData) return showScanStatus("Scan employee QR first.", "err");
     if (!vesselData) return showScanStatus("Scan project QR first.", "err");
 
-    const serialNumber = vesselData.serialNumber;
-    const station = employeeData.station;
-    const processName = el("processSelect").value;
+    const startBtn = el("btnStartProcess");
+    const stopBtn = el("btnStopProcess");
+    const processSel = el("processSelect");
+    const originalStartText = startBtn.textContent;
 
-    const runDate = getMYDateKey();
+    startInFlight = true;
+    startBtn.disabled = true;
+    startBtn.textContent = "Starting...";
+    showScanStatus("Starting process...", "info");
 
-    // 1) Block if currently running
-    const active = await findActiveRun(serialNumber, station, processName);
-    if (active) {
-      showScanStatus("This process is already running.", "err");
-      return;
+    try {
+      const serialNumber = vesselData.serialNumber;
+      const station = employeeData.station;
+      const processName = processSel.value;
+      const runDate = getMYDateKey();
+
+      // 1) Block if currently running
+      const active = await findActiveRun(serialNumber, station, processName);
+      if (active) {
+        showScanStatus("This process is already running.", "err");
+        return;
+      }
+
+      // 2) Block if already completed today
+      const exists = await findAnyRunTodayByStartAt(serialNumber, station, processName);
+      if (exists) {
+        showScanStatus(
+          `Error: Already ran today (${exists.myDateStr}). Status: ${exists.status}`,
+          "err"
+        );
+        return;
+      }
+
+      // Disable changing process once you start
+      processSel.disabled = true;
+
+      const payload = {
+        serialNumber,
+        station,
+        processName,
+        runDate,
+        status: "running",
+        startedByName: employeeData.employeeName,
+        startedByNumber: employeeData.employeeNumber,
+        manpower: employeeData.manpower,
+        startAt: serverTimestamp(),
+        startEpochMs: Date.now(),
+        projectName: vesselData.projectName,
+        materialNumber: vesselData.materialNumber,
+        description: vesselData.description,
+        version: vesselData.version
+      };
+
+      const ref = await addDoc(collection(db, "processRuns"), payload);
+      currentRunId = ref.id;
+      saveState();
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+
+      runAccumMs = 0;
+      startStopwatch();
+      showScanStatus("Process is running.", "ok");
+    } catch (err) {
+      console.error(err);
+      showScanStatus("Failed to start process. Please try again.", "err");
+    } finally {
+      startInFlight = false;
+      startBtn.textContent = originalStartText;
+      if (!runRunning) startBtn.disabled = false;
     }
-
-    //2) Block if already completed today
-     const exists = await findAnyRunTodayByStartAt(serialNumber, station, processName);
-    if (exists) {
-      showScanStatus(
-        `Error: Already ran today (${exists.myDateStr}). Status: ${exists.status}`,
-        "err"
-      );
-      return;
-    }
-
-    // Disable changing process once you start
-    el("processSelect").disabled = true;
-
-    const payload = {
-      serialNumber,
-      station,
-      processName,
-      runDate,                 
-      status: "running",
-      startedByName: employeeData.employeeName,
-      startedByNumber: employeeData.employeeNumber,
-      startAt: serverTimestamp(),
-      startEpochMs: Date.now(),
-      projectName: vesselData.projectName,
-      materialNumber: vesselData.materialNumber,
-      description: vesselData.description,
-      version: vesselData.version
-    };
-
-    const ref = await addDoc(collection(db, "processRuns"), payload);
-    currentRunId = ref.id;
-
-    saveState();
-
-    el("btnStartProcess").disabled = true;
-    el("btnStopProcess").disabled = false;
-
-    runAccumMs = 0;
-    startStopwatch();
-});
+  });
 
 
 let pendingStop = null; // stores {runId, durationMs} until modal saved
@@ -832,7 +853,8 @@ el("remarksSave").addEventListener("click", async () => {
       endAt: serverTimestamp(),
       endEpochMs: Date.now(),
       durationMs,
-      remarks
+      remarks,
+      manpower: employeeData?.manpower ?? null
     });
 
     showSaveOverlay("Process saved", true);
