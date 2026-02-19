@@ -44,6 +44,32 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     return `${y}-${m}-${day}`;
   }
 
+  function updateStepper(step) {
+  const idx = step === "employee" ? 1 : step === "project" ? 2 : 3;
+
+  const s1 = el("step1"), s2 = el("step2"), s3 = el("step3");
+  [s1, s2, s3].forEach(x => x && x.classList.remove("done","current"));
+
+  if (idx === 1) {
+    s1.classList.add("current");
+  } else if (idx === 2) {
+    s1.classList.add("done");
+    s2.classList.add("current");
+  } else {
+    s1.classList.add("done");
+    s2.classList.add("done");
+    s3.classList.add("current");
+  }
+
+  const fill = el("stepFill");
+  if (fill) {
+    // 3 steps => 0%, 50%, 100%
+    fill.style.width = (idx === 1 ? 0 : idx === 2 ? 50 : 100) + "%";
+  }
+}
+
+
+
   function getMYDayRange() {
   // Build "today" in Asia/Kuala_Lumpur, then convert to Date objects.
   const now = new Date();
@@ -371,31 +397,27 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     async function setStep(step) {
       hideScanStatus();
       currentStep = step;
+      updateStepper(step);
 
-      // Screens
-      el("screen-employee").classList.toggle("hidden", step !== "employee");
-      el("screen-project").classList.toggle("hidden", step !== "project");
-      el("screen-status").classList.toggle("hidden", step !== "status");
-
-      // Step indicator
-      el("step1").classList.toggle("active", step === "employee");
-      el("step2").classList.toggle("active", step === "project");
-      el("step3").classList.toggle("active", step === "status");
+      // SHOW/HIDE SCREENS 
+      el("screen-employee")?.classList.toggle("hidden", step !== "employee");
+      el("screen-project")?.classList.toggle("hidden", step !== "project");
+      el("screen-status")?.classList.toggle("hidden", step !== "status");
 
       const inStatus = (step === "status");
 
       // Hide scanner UI in Status
-      el("reader").classList.toggle("hidden", inStatus);
+      el("reader")?.classList.toggle("hidden", inStatus);
 
       // Disable/hide Scan button in Status
       const scanBtn = el("start-scan");
       if (scanBtn) {
         scanBtn.disabled = inStatus;
-        scanBtn.classList.toggle("hidden", inStatus); // optional
+        scanBtn.classList.toggle("hidden", inStatus);
       }
 
       if (inStatus) {
-        await stopScanner(); //  now valid
+        await stopScanner();
 
         renderStopwatch();
 
@@ -410,26 +432,22 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
         // show project info on top
         if (employeeData) {
-          if (el("statusStation")) el("statusStation").innerText = employeeData.station || "-";
-          if (el("statusManpower")) el("statusManpower").innerText = employeeData.manpower ?? "-";
+          el("statusStation") && (el("statusStation").innerText = employeeData.station || "-");
+          el("statusManpower") && (el("statusManpower").innerText = employeeData.manpower ?? "-");
         }
-
         if (vesselData) {
-          if (el("statusProject")) el("statusProject").innerText = vesselData.projectName || "-";
-          if (el("statusMaterial")) el("statusMaterial").innerText = vesselData.materialNumber || "-";
-          if (el("statusSerial")) el("statusSerial").innerText = vesselData.serialNumber || "-";
+          el("statusProject") && (el("statusProject").innerText = vesselData.projectName || "-");
+          el("statusMaterial") && (el("statusMaterial").innerText = vesselData.materialNumber || "-");
+          el("statusSerial") && (el("statusSerial").innerText = vesselData.serialNumber || "-");
         }
 
         // lock process dropdown when running
         const proc = el("processSelect");
         if (proc) proc.disabled = runRunning;
-
       }
 
-      if (suppressNextSave) suppressNextSave = false;
-      else saveState();
+      saveState();
     }
-
 
 
 /* Get the station state from firestore */ 
@@ -467,7 +485,7 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
 
 /* Function to parse the scanned QR code when scan succeeded */
 
-    function onScanSuccess(decodedText) {
+    async function onScanSuccess(decodedText) {
         const text = decodedText.trim();
 
         // Ignore repeated reads of the same QR within a short window
@@ -495,31 +513,42 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
 
         // EMPLOYEE QR: EMP;EmpNo;Name;Station
         if (isEmployee) {
-            const parts = text.split(";");
-            if (parts.length !== 4) {
-            safeAlert("Invalid Employee QR format! Use: EMP;EmpNo;Name;Station");
+          const parts = text.split(";");
+          if (parts.length !== 4) {
+            showScanStatus("Invalid Employee QR format. Use: EMP;EmpNo;Name;Station", "err");
             return;
-            }
+          }
 
-            const [, employeeNumber, employeeName, station] = parts;
-            employeeData = { employeeNumber, employeeName, station };
+          const [, employeeNumber, employeeName, station] = parts;
 
-            showScanStatus("QR successfully scanned.");
-            stopScanner();          // stop camera
-            saveState();            // keep everything
+          // manpower NOT collected yet
+          employeeData = { employeeNumber, employeeName, station, manpower: null };
 
-            el("empName").innerText = employeeName;
-            el("empNo").innerText = employeeNumber;
-            el("empStation").innerText = station;
+          // update UI
+          el("empName").innerText = employeeName;
+          el("empNo").innerText = employeeNumber;
+          el("empStation").innerText = station;
 
-            loadProcessesForStation(employeeData.station);
-            
+          // reset manpower field each time new employee is scanned
+          const mp = el("manpowerInput");
+          if (mp) mp.value = "";
+
+          loadProcessesForStation(station);
+
+          saveState();
+
+          // stop scanning but stay on employee screen
+          showScanStatus("Employee QR code successfully scanned.", "ok");
+          await stopScanner();
+
+          return;
+
 
         } else {
             // PROJECT QR: D1;Project Name; Description; Material Number; Serial Number; Model; Chiller Type; Refrigerant
             const parts = text.split(";");
             if (parts.length !== 8) {
-            alert("Invalid Project QR format! Expected 8 fields separated by ';'");
+            alert("Invalid Project QR format!");
             return;
             }
 
@@ -535,7 +564,7 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
               refrigerant 
             };
 
-            showScanStatus("QR successfully scanned.");
+            showScanStatus("Project QR code successfully scanned.","ok");
             stopScanner();          // stop camera
             saveState();            // keep everything
 
@@ -694,24 +723,32 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
     renderStopwatch();
 
 
-    // EMPLOYEE page submit → go to project page
+    // EMPLOYEE page submit, go to project page
     el("to-project").addEventListener("click", async () => {
       if (!employeeData) {
-        alert("Please scan employee QR first.");
+        showScanStatus("Please scan employee QR first.", "err");
         return;
       }
 
-      const manpower = Number(el("manpowerInput").value || 0);
+      const manpowerStr = (el("manpowerInput")?.value || "").trim();
+      const manpower = Number(manpowerStr);
+
+      if (!manpowerStr) {
+        showScanStatus("Please fill in Manpower before Submit.", "err");
+        return;
+      }
       if (!Number.isFinite(manpower) || manpower <= 0) {
-        alert("Please enter Manpower (must be 1 or more).");
+        showScanStatus("Manpower must be a number 1 or above.", "err");
         return;
       }
 
-      employeeData.manpower = manpower; //  store inside employeeData
+      employeeData.manpower = manpower;
       saveState();
 
+      showScanStatus("Manpower saved. Now scan Project QR.", "ok");
       await setStep("project");
     });
+
 
     // PROJECT page submit → go to status page
     el("to-status").addEventListener("click", () => {

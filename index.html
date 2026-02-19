@@ -17,11 +17,29 @@
     <h2>Project Tracking App</h2>
 
     <!-- Step indicator -->
-    <div class="stepbar">
-      <div class="step" id="step1">Employee</div>
-      <div class="step" id="step2">Project</div>
-      <div class="step" id="step3">Status</div>
+  <div class="stepperCard">
+    <div class="stepperLine">
+      <div class="stepperLineFill" id="stepFill"></div>
     </div>
+
+    <div class="stepperSteps">
+      <div class="sStep" id="step1">
+        <div class="sDot"><span class="sCheck">✓</span></div>
+        <div class="sLbl">QR EMPLOYEE</div>
+      </div>
+
+      <div class="sStep" id="step2">
+        <div class="sDot"><span class="sCheck">✓</span></div>
+        <div class="sLbl">QR PROJECT</div>
+      </div>
+
+      <div class="sStep" id="step3">
+        <div class="sDot"><span class="sCheck">✓</span></div>
+        <div class="sLbl">PROJECT STATUS</div>
+      </div>
+    </div>
+  </div>
+
 
     <!-- Shared scanner -->
     <div id="reader" style="width:100%; margin-top:10px;"></div>

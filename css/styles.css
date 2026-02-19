@@ -9,20 +9,36 @@
   --accentHover:#1d4ed8;
   --radius:14px;
   --radiusSm:10px;
+  --stepAccent: #2343b8;      /* brown/gold */
+  --stepTrack: #d8dae7;       /* light track */
+  --stepMuted: #b6bee9;       /* muted text */
+  
 }
 
 *{ box-sizing:border-box; }
 body{
   margin:0;
+  min-height: 100dvh;
   padding:20px;
+  display: flex;
+  justify-content: center;   /* horizontal center */
+  align-items: center;       /* vertical center */
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   color:var(--text);
   background:var(--bg);
 }
 
+/* Never allow page-wide horizontal scroll */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 .wrap{
-  max-width:520px;
-  margin:0 auto;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
 }
 
 h2{
@@ -45,26 +61,121 @@ h3{
 .hidden{ display:none !important; }
 
 /* Step indicator (minimal tabs) */
-.stepbar{
-  display:flex;
-  gap:10px;
-  margin: 8px 0 16px;
-}
-.step{
-  flex:1;
-  text-align:center;
-  padding:10px 8px;
-  border:1px solid var(--border);
-  border-radius:999px;
-  font-size:12px;
-  color:var(--muted);
+.stepperCard{
   background:#fff;
+  border-radius: 16px;
+  padding: 18px 18px 14px;
+  box-shadow: 0 16px 40px rgba(17,24,39,0.12);
+  border: 1px solid rgba(229,231,235,0.7);
+  margin: 10px 0 18px;
+  position: relative;
 }
-.step.active{
-  color:var(--accent);
-  border-color: rgba(37,99,235,0.35);
-  box-shadow: 0 6px 18px rgba(37,99,235,0.12);
-  font-weight:800;
+
+/* the line sits behind the dots */
+.stepperLine{
+  position:absolute;
+  left: 10%;
+  right: 10%;
+  top: 28px;
+  height: 3px;
+  background: var(--stepTrack);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.stepperLineFill{
+  height: 100%;
+  width: 0%;
+  background: var(--stepAccent);
+  border-radius: 999px;
+  transition: width .25s ease;
+}
+
+.stepperSteps{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: start;
+  gap: 0;
+  position: relative;
+}
+
+.sStep{
+  display:flex;
+  flex-direction: column;
+  align-items:center;
+  gap: 8px;
+  text-align:center;
+  user-select:none;
+}
+
+.sDot{
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fff;
+  border: 2px solid var(--stepTrack);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+  box-shadow: 0 8px 18px rgba(17,24,39,0.10);
+}
+
+.sLbl{
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: var(--stepMuted);
+}
+
+/* CURRENT step */
+.sStep.current .sDot{
+  border-color: var(--stepAccent);
+  transform: scale(1.05);
+}
+.sStep.current .sLbl{
+  color: var(--stepAccent);
+}
+
+/* DONE step (check icon) */
+.sStep.done .sDot{
+  background: var(--stepAccent);
+  border-color: var(--stepAccent);
+}
+.sStep.done .sLbl{
+  color: var(--stepAccent);
+}
+
+.sCheck{
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  opacity: 0;              /* hidden unless done */
+  transform: translateY(-.5px);
+}
+.sStep.done .sCheck{ opacity: 1; }
+
+/* future steps: keep check hidden */
+.sStep:not(.done) .sCheck{ opacity: 0; }
+
+
+
+/* current step */
+.step.current{
+  color: var(--accent);
+}
+.step.current .dot{
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+
+/* completed step */
+.step.done{
+  color: #10b981;
+}
+.step.done .dot{
+  background: #10b981;
+  border-color: #10b981;
 }
 
 /* Cards / sections */
@@ -103,6 +214,20 @@ h3{
   overflow:hidden;
   background:#fff;
 }
+
+/* html5-qrcode often injects fixed-width elements; clamp them */
+#reader,
+#reader * {
+  max-width: 100% !important;
+}
+
+#reader video,
+#reader canvas,
+#reader img {
+  width: 100% !important;
+  height: auto !important;
+}
+
 
 /* Inputs */
 label{
