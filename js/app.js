@@ -14,22 +14,94 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 /* Firebase configuration and database initialization */
-    const firebaseConfig = {
-      apiKey: "AIzaSyBePrEYgwU4tD9h82n9PbjfxtTyQMXm6Kk",
-      authDomain: "qrcodetesting-4f86e.firebaseapp.com",
-      projectId: "qrcodetesting-4f86e",
-      storageBucket: "qrcodetesting-4f86e.firebasestorage.app",
-      messagingSenderId: "746921254909",
-      appId: "1:746921254909:web:7acce026b9d96c97880394"
-    };
+  const firebaseConfig = {
+    apiKey: "AIzaSyBePrEYgwU4tD9h82n9PbjfxtTyQMXm6Kk",
+    authDomain: "qrcodetesting-4f86e.firebaseapp.com",
+    projectId: "qrcodetesting-4f86e",
+    storageBucket: "qrcodetesting-4f86e.firebasestorage.app",
+    messagingSenderId: "746921254909",
+    appId: "1:746921254909:web:7acce026b9d96c97880394"
+   };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const el = (id) => document.getElementById(id);
 
-  /* Helper functions */
+  /* ============== Initialize variables ================================ */
+  /* Initialize variables */
 
-    function getMYDateKey(d = new Date()) {
+    let html5Qr = null;
+    let scanning = false;
+    let vesselData = null;   // vessel
+    let employeeData = null; // employee
+      
+    // Process run state
+    let currentRunId = null;      // Firestore doc id for the running process
+    let runStartEpoch = 0;        // epoch for stopwatch
+    let runTimer = null;
+    let runRunning = false;
+    let runAccumMs = 0;    
+
+    // Steps: "employee" -> "project" -> "status"
+    let currentStep = "employee";
+
+    // Prevent repeated prompts from the same QR / rapid callbacks
+    let lastDecodedText = "";
+    let lastDecodedAt = 0;
+    let alertLock = false;
+
+    let stateEnabled = true;
+
+    const STATE_KEY = "qrAppState_v1";
+    let resumeLocked = false;
+    let resumeRunStatus = null; // "on_hold" | null
+    let resumeProcessName = null;
+
+   /* ============== Helper functions ====================================== */
+
+  function getAllPrevProcessNames(station, currentProcessName) {
+    const list = PROCESS_BY_STATION[station] || [];
+    const idx = list.indexOf(currentProcessName);
+    if (idx <= 0) return [];
+    return list.slice(0, idx); // everything before current
+  }
+
+   /* Helper to find the hold status */
+ 
+  async function findOnHoldRun(serialNumber, station, processName) {
+  const q = query(
+    collection(db, "processRuns"),
+    where("serialNumber", "==", serialNumber),
+    where("station", "==", station),
+    where("processName", "==", processName),
+    where("status", "==", "on_hold"),
+    limit(1)
+  );
+
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
+  /* Function to open hold modal */
+  function openHoldModal() {
+  el("holdModal").classList.remove("hidden");
+  el("holdReason").value = "";
+  el("holdRemarks").value = "";
+
+  // force hide remarks every time modal opens
+  el("holdRemarks").classList.add("hidden");
+
+  setTimeout(() => el("holdReason").focus(), 0);
+}
+
+  /* Function to close hold modal */
+  function closeHoldModal() {
+      el("holdModal").classList.add("hidden");
+  }
+
+  /* Function to convert time to Malaysian time DD-MM-YYYY */
+  function getMYDateKey(d = new Date()) {
     // "YYYY-MM-DD" in Asia/Kuala_Lumpur time
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Kuala_Lumpur",
@@ -44,7 +116,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     return `${y}-${m}-${day}`;
   }
 
-  function updateStepper(step) {
+  /* Update the stepper for each page */
+function updateStepper(step) {
   const idx = step === "employee" ? 1 : step === "project" ? 2 : 3;
 
   const s1 = el("step1"), s2 = el("step2"), s3 = el("step3");
@@ -68,9 +141,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
   }
 }
 
-
-
-  function getMYDayRange() {
+/* Get the range of day */
+function getMYDayRange() {
   // Build "today" in Asia/Kuala_Lumpur, then convert to Date objects.
   const now = new Date();
 
@@ -87,8 +159,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
   const d = Number(parts.find(p => p.type === "day").value);
 
   // Create MY midnight and next midnight in *local JS Date* by using UTC then offsetting is messy.
-  // Easier: use Date.UTC with MY date, then treat as "MY day" boundaries by formatting.
-  // Practical approach: compute boundaries by taking now, and building midnight in MY timezone via string.
+  // Use Date.UTC with MY date, then treat as "MY day" boundaries by formatting.
   const myDateStr = `${String(y).padStart(4,"0")}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 
   // Turn "YYYY-MM-DDT00:00:00+08:00" into Date
@@ -98,394 +169,436 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
   return { start, end, myDateStr };
 }
 
+/* Function to reset all data */
+function resetAllData() {
+  resumeLocked = false;
+  resumeRunStatus = null;
+  resumeProcessName = null;
+  stateEnabled = false;
+  localStorage.removeItem(STATE_KEY);
 
-  function resetAllData() {
-    stateEnabled = false;
-    localStorage.removeItem(STATE_KEY);
+  employeeData = null;
+  vesselData = null;
 
-    employeeData = null;
-    vesselData = null;
-    qrScanned = false;
+  currentRunId = null;
+  runRunning = false;
+  runStartEpoch = 0;
+  runAccumMs = 0;
 
-    currentRunId = null;
+  if (runTimer) { clearInterval(runTimer); runTimer = null; }
+  renderStopwatch();
+
+  el("empName").innerText = "-";
+  el("empNo").innerText = "-";
+  el("empStation").innerText = "-";
+
+  el("projectName").innerText = "-";
+  el("description").innerText = "-";
+  el("materialNumber").innerText = "-";
+  el("serialNumber").innerText = "-";
+
+  if (el("statusProject")) el("statusProject").innerText = "-";
+  if (el("statusMaterial")) el("statusMaterial").innerText = "-";
+  if (el("statusSerial")) el("statusSerial").innerText = "-";
+  if (el("statusStation")) el("statusStation").innerText = "-";
+
+  if (el("manpowerInput")) el("manpowerInput").value = "";
+  if (el("statusManpower")) el("statusManpower").innerText = "-";
+
+  const sel = el("processSelect");
+  if (sel) {
+    sel.innerHTML = "";
+    sel.disabled = false;
+  }
+
+  hideScanStatus();
+  if (el("qr-result")) el("qr-result").textContent = "";
+
+  stateEnabled = true;
+}
+
+
+/* Show the circle of save overlay */
+function showSaveOverlay(text = "Saving...", isSuccess = false) {
+  const overlay = el("saveOverlay");
+  const txt = el("saveOverlayText");
+  if (!overlay || !txt) return;
+
+  txt.textContent = text;
+  txt.classList.toggle("success", !!isSuccess);
+
+   overlay.classList.remove("hidden");
+}
+
+
+/* Hide the circle of save overlay */
+function hideSaveOverlay() {
+  const overlay = el("saveOverlay");
+  if (!overlay) return;
+  overlay.classList.add("hidden");
+}
+
+function showScanStatus(msg, type = "info") {
+  const box = el("scan-status");
+  if (!box) return;
+
+  box.textContent = msg;
+  box.classList.remove("hidden", "ok", "err", "info");
+  box.classList.add(type); // "ok" | "err" | "info"
+}
+
+function hideScanStatus() {
+  const box = el("scan-status");
+  if (!box) return;
+  box.classList.add("hidden");
+  box.textContent = "";
+  box.classList.remove("ok", "err", "info");
+}
+
+function saveState() {
+  if (!stateEnabled) return; //  block saving completely when disabled
+
+  const state = {
+    currentStep,
+    employeeData,
+    vesselData,
+    currentRunId,
+    runRunning,
+    runStartEpoch,
+    runAccumMs,
+    resumeLocked,
+    resumeRunStatus,
+    resumeProcessName
+  };
+  localStorage.setItem(STATE_KEY, JSON.stringify(state));
+}
+
+
+  function shouldIgnoreDuplicate(text, windowMs = 1200) {
+    const now = Date.now();
+    const same = text === lastDecodedText && (now - lastDecodedAt) < windowMs;
+    lastDecodedText = text;
+    lastDecodedAt = now;
+    return same;
+  }
+
+  // Set process to stations
+  const PROCESS_BY_STATION = {
+    "PV 1": [
+      "6 - Hole bevelling", 
+      "7 - Connector welding",
+      "8 - Fitting internal plate and GMAW C&B",
+      "9 - Fitting and welding distribution box", 
+      "10 - Tube support and bush fitting, tube sheet fitting",
+      "11 - Tubesheet welding",
+      "12 - Bracket and attachment welding",
+      "13 - Unit side plate and base welding",
+      "14 - Tube slotting and expansion",
+    ],
+
+  
+    "PV 2": [
+      "6 - Hole bevelling", 
+      "7 - Connector welding",
+      "8 - Fitting internal plate and GMAW C&B",
+      "9 - Fitting and welding distribution box", 
+      "10 - Tube support and bush fitting, tube sheet fitting",
+      "11 - Tubesheet welding",
+      "12 - Bracket and attachment welding",
+      "13 - Unit side plate and base welding",
+      "14 - Tube slotting and expansion",
+    ]
+
+    // Add more stations here peeps
+  };
+
+  
+
+// Load the station drop down menu
+  function loadProcessesForStation(station) {
+    const list = PROCESS_BY_STATION[station] || ["General Process"];
+    const sel = el("processSelect");
+    sel.innerHTML = "";
+    list.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = p;
+      sel.appendChild(opt);
+    });
+  }
+
+  // apply loaded resume to GUI -> locked the process, and user need to click Start to resume
+  function applyResumeRunToUI(runDoc) {
+    currentRunId = runDoc.id;
+
     runRunning = false;
     runStartEpoch = 0;
-    runAccumMs = 0;
+    runAccumMs = Number(runDoc.durationMs || 0);
 
-    if (runTimer) { clearInterval(runTimer); runTimer = null; }
+    resumeLocked = true;
+    resumeRunStatus = "on_hold";
+    resumeProcessName = runDoc.processName;
+
+    const procSel = el("processSelect");
+    if (procSel) {
+      procSel.value = runDoc.processName;
+      procSel.disabled = true;
+    }
+
     renderStopwatch();
+    saveState();
 
-    el("empName").innerText = "-";
-    el("empNo").innerText = "-";
-    el("empStation").innerText = "-";
+    showScanStatus(
+      `Found ON HOLD: "${runDoc.processName}". Time: ${formatMs(runAccumMs)}. Press Start to resume.`,
+      "info"
+    );
 
-    el("projectName").innerText = "-";
-    el("description").innerText = "-";
-    el("materialNumber").innerText = "-";
-    el("serialNumber").innerText = "-";
-
-    if (el("statusProject")) el("statusProject").innerText = "-";
-    if (el("statusMaterial")) el("statusMaterial").innerText = "-";
-    if (el("statusSerial")) el("statusSerial").innerText = "-";
-    if (el("statusStation")) el("statusStation").innerText = "-";
-
-    if (el("manpowerInput")) el("manpowerInput").value = "";
-    if (el("statusManpower")) el("statusManpower").innerText = "-";
-
-    const sel = el("processSelect");
-    if (sel) {
-      sel.innerHTML = "";
-      sel.disabled = false;
-    }
-
-    hideScanStatus();
-    if (el("qr-result")) el("qr-result").textContent = "";
-
-    stateEnabled = true;
+    syncStatusButtons();
   }
 
-  function showSaveOverlay(text = "Saving...", isSuccess = false) {
-    const overlay = el("saveOverlay");
-    const txt = el("saveOverlayText");
-    if (!overlay || !txt) return;
-
-    txt.textContent = text;
-    txt.classList.toggle("success", !!isSuccess);
-
-    overlay.classList.remove("hidden");
-  }
-
-  function hideSaveOverlay() {
-    const overlay = el("saveOverlay");
-    if (!overlay) return;
-    overlay.classList.add("hidden");
-  }
-
-    function showScanStatus(msg, type = "info") {
-    const box = el("scan-status");
-    if (!box) return;
-
-    box.textContent = msg;
-    box.classList.remove("hidden", "ok", "err", "info");
-    box.classList.add(type); // "ok" | "err" | "info"
-  }
-
-  function hideScanStatus() {
-    const box = el("scan-status");
-    if (!box) return;
-    box.classList.add("hidden");
-    box.textContent = "";
-    box.classList.remove("ok", "err", "info");
-  }
-
-
-  const STATE_KEY = "qrAppState_v1";
-
-    function openRemarksModal() {
-      el("remarksModal").classList.remove("hidden");
-      el("remarksInput").value = "";
-      setTimeout(() => el("remarksInput").focus(), 0);
-    }
-
-    function closeRemarksModal() {
-      el("remarksModal").classList.add("hidden");
-    }
-
-    function saveState() {
-    if (!stateEnabled) return; //  block saving completely when disabled
-
-    const state = {
-      currentStep,
-      employeeData,
-      vesselData,
-      currentRunId,
-      runRunning,
-      runStartEpoch,
-      runAccumMs
-    };
-    localStorage.setItem(STATE_KEY, JSON.stringify(state));
-  }
-
-/* Initialize variables */
-
-    let html5Qr = null;
-    let scanning = false;
-    let vesselData = null;   // vessel
-    let employeeData = null; // employee
-    let suppressNextSave = false;
-    let qrScanned = false;
+  function loadState() {
     
-    // Process run state
-    let currentRunId = null;      // Firestore doc id for the running process
-    let runStartEpoch = 0;        // epoch for stopwatch
-    let runTimer = null;
-    let runRunning = false;
-    let runAccumMs = 0;    
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) return;
 
-    // Steps: "employee" -> "project" -> "status"
-    let currentStep = "employee";
+    try {
+      const state = JSON.parse(raw);
 
-    // Prevent repeated prompts from the same QR / rapid callbacks
-    let lastDecodedText = "";
-    let lastDecodedAt = 0;
-    let alertLock = false;
+      currentStep = state.currentStep || "employee";
+      employeeData = state.employeeData || null;
+      vesselData = state.vesselData || null;
 
-    let stateEnabled = true;
+      currentRunId = state.currentRunId || null;
+      runRunning = !!state.runRunning;
+      runStartEpoch = state.runStartEpoch || 0;
+      runAccumMs = state.runAccumMs || 0;
 
-    function safeAlert(msg, cooldownMs = 1500) {
-      if (alertLock) return;
-      alertLock = true;
-      alert(msg);
-      setTimeout(() => (alertLock = false), cooldownMs);
-    }
+      resumeLocked = !!state.resumeLocked;
+      resumeRunStatus = state.resumeRunStatus || null;
+      resumeProcessName = state.resumeProcessName || null;
 
-    function shouldIgnoreDuplicate(text, windowMs = 1200) {
-      const now = Date.now();
-      const same = text === lastDecodedText && (now - lastDecodedAt) < windowMs;
-      lastDecodedText = text;
-      lastDecodedAt = now;
-      return same;
-    }
-
-    // Set process to stations
-    const PROCESS_BY_STATION = {
-      "PV 1": [
-        "6 - Hole bevelling", 
-        "7 - Connector welding",
-        "8 - Fitting internal plate and GMAW C&B",
-        "9 - Fitting and welding distribution box", 
-        "10 - Tube support and bush fitting, tube sheet fitting",
-        "11 - Tubesheet welding",
-        "12 - Bracket and attachment welding",
-        "13 - Unit side plate and base welding",
-        "14 - Tube slotting and expansion",
-      ],
-
-      // My own testing
-      "PV 2": [
-        "6 - Hole bevelling", 
-        "7 - Connector welding",
-        "8 - Fitting internal plate and GMAW C&B",
-        "9 - Fitting and welding distribution box", 
-        "10 - Tube support and bush fitting, tube sheet fitting",
-        "11 - Tubesheet welding",
-        "12 - Bracket and attachment welding",
-        "13 - Unit side plate and base welding",
-        "14 - Tube slotting and expansion",
-      ]
-    };
-
-    // Load the station drop down menu
-      function loadProcessesForStation(station) {
-      const list = PROCESS_BY_STATION[station] || ["General Process"];
-      const sel = el("processSelect");
-      sel.innerHTML = "";
-      list.forEach(p => {
-        const opt = document.createElement("option");
-        opt.value = p;
-        opt.textContent = p;
-        sel.appendChild(opt);
-      });
-    }
-
-    function loadState() {
-      const raw = localStorage.getItem(STATE_KEY);
-      if (!raw) return;
-
-      try {
-        const state = JSON.parse(raw);
-
-        currentStep = state.currentStep || "employee";
-        employeeData = state.employeeData || null;
-        vesselData = state.vesselData || null;
-
-        currentRunId = state.currentRunId || null;
-        runRunning = !!state.runRunning;
-        runStartEpoch = state.runStartEpoch || 0;
-        runAccumMs = state.runAccumMs || 0;
-
-        // restore UI
-        if (employeeData) {
-          el("empName").innerText = employeeData.employeeName;
-          el("empNo").innerText = employeeData.employeeNumber;
-          el("empStation").innerText = employeeData.station;
-          loadProcessesForStation(employeeData.station);
-        }
-
-        if (vesselData) {
-          el("projectName").innerText = vesselData.projectName;
-          el("description").innerText = vesselData.description;
-          el("materialNumber").innerText = vesselData.materialNumber;
-          el("serialNumber").innerText = vesselData.serialNumber;
-        }
-
-        setStep(currentStep);
-
-        // resume stopwatch if running
-        if (runRunning) {
-          runTimer = setInterval(renderStopwatch, 200);
-        }
-
-        renderStopwatch();
-
-      } catch (e) {
-        console.error("State load failed", e);
-        localStorage.removeItem(STATE_KEY);
-      }
-    }
-
-    function restoreUIFromState() {
-      // Restore employee UI
+      // restore UI
       if (employeeData) {
-        el("empName").innerText = employeeData.employeeName || "-";
-        el("empNo").innerText = employeeData.employeeNumber || "-";
-        el("empStation").innerText = employeeData.station || "-";
+        el("empName").innerText = employeeData.employeeName;
+        el("empNo").innerText = employeeData.employeeNumber;
+        el("empStation").innerText = employeeData.station;
         loadProcessesForStation(employeeData.station);
       }
 
-      // Restore project UI
       if (vesselData) {
-        el("projectName").innerText = vesselData.projectName || "-";
-        el("description").innerText = vesselData.description || "-";
-        el("materialNumber").innerText = vesselData.materialNumber || "-";
-        el("serialNumber").innerText = vesselData.serialNumber || "-";
+        el("projectName").innerText = vesselData.projectName;
+        el("description").innerText = vesselData.description;
+        el("materialNumber").innerText = vesselData.materialNumber;
+        el("serialNumber").innerText = vesselData.serialNumber;
       }
 
-      // Go to correct screen (this also stops scanner if status)
       setStep(currentStep);
 
-      // Resume stopwatch display/tick if it was running
-      renderStopwatch();
-      if (runRunning && !runTimer) {
-        if (!runTimer) runTimer = setInterval(renderStopwatch, 200);
-        // If a run is active, keep buttons consistent
-        el("btnStartProcess").disabled = true;
-        el("btnStopProcess").disabled = false;
+      // resume stopwatch if running
+      if (runRunning) {
+        runTimer = setInterval(renderStopwatch, 200);
       }
 
-      // disable process dropdown if running
-      const proc = el("processSelect");
-      if (proc) proc.disabled = runRunning;
+      renderStopwatch();
+
+    } catch (e) {
+      console.error("State load failed", e);
+      localStorage.removeItem(STATE_KEY);
+    }
+ }
+
+ function syncStatusButtons() {
+    const startBtn = el("btnStartProcess");
+    const stopBtn  = el("btnStopProcess");
+    const holdBtn  = el("btnHoldProcess");
+    const procSel  = el("processSelect");
+
+    if (!startBtn || !stopBtn || !holdBtn) return;
+
+    startBtn.disabled = runRunning;     // running -> cannot start again
+    stopBtn.disabled  = !runRunning;    // not running -> can't stop
+    holdBtn.disabled  = !runRunning;    // not running -> can't hold
+    if (procSel) procSel.disabled = runRunning || resumeLocked;
+ }
+
+  function restoreUIFromState() {
+    // Restore employee UI
+    if (employeeData) {
+      el("empName").innerText = employeeData.employeeName || "-";
+      el("empNo").innerText = employeeData.employeeNumber || "-";
+      el("empStation").innerText = employeeData.station || "-";
+      loadProcessesForStation(employeeData.station);
     }
 
-    // find anything that run by today
-    async function findAnyRunTodayByStartAt(serialNumber, station, processName) {
-      const { start, end, myDateStr } = getMYDayRange();
-
-      const q = query(
-        collection(db, "processRuns"),
-        where("serialNumber", "==", serialNumber),
-        where("station", "==", station),
-        where("processName", "==", processName),
-
-        // "today" filter (Malaysia day)
-        where("startAt", ">=", start),
-        where("startAt", "<", end),
-
-        // block if running or completed
-        where("status", "in", ["running", "completed"]),
-        limit(1)
-      );
-
-      const snap = await getDocs(q);
-      if (snap.empty) return null;
-      return { myDateStr, id: snap.docs[0].id, ...snap.docs[0].data() };
+    // Restore project UI
+    if (vesselData) {
+      el("projectName").innerText = vesselData.projectName || "-";
+      el("description").innerText = vesselData.description || "-";
+      el("materialNumber").innerText = vesselData.materialNumber || "-";
+      el("serialNumber").innerText = vesselData.serialNumber || "-";
     }
+
+    // Go to correct screen (this also stops scanner if status)
+    setStep(currentStep);
+
+    // Resume stopwatch display/tick if it was running
+    renderStopwatch();
+    if (runRunning && !runTimer) {
+      if (!runTimer) runTimer = setInterval(renderStopwatch, 200);
+      // If a run is active, keep buttons consistent
+      el("btnStartProcess").disabled = true;
+      el("btnStopProcess").disabled = false;
+      el("btnHoldProcess").disabled = false;
+    }
+
+    // Disable process dropdown if running
+    const proc = el("processSelect");
+    if (proc) proc.disabled = runRunning;
+  }
+
+  // Check database if previous process has completed or not (same serial and station)
+  async function hasCompletedProcess(serialNumber, station, processName) {
+    const q = query(
+      collection(db, "processRuns"),
+      where("serialNumber", "==", serialNumber),
+      where("station", "==", station),
+      where("processName", "==", processName),
+      where("status", "==", "completed"),
+      limit(1)
+    );
+
+    const snap = await getDocs(q);
+    return !snap.empty;
+  }
+
+
+  // Find anything that run by today
+  async function findAnyRunTodayByStartAt(serialNumber, station, processName) {
+    const runDate = getMYDateKey(); // "YYYY-MM-DD" MY time
+
+    const q = query(
+      collection(db, "processRuns"),
+      where("serialNumber", "==", serialNumber),
+      where("station", "==", station),
+      where("processName", "==", processName),
+      where("runDate", "==", runDate),
+      where("status", "in", ["running", "completed", "on_hold"]),
+      limit(1)
+    );
+
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    return { runDate, id: snap.docs[0].id, ...snap.docs[0].data() };
+  }
 
     
-    // Function for changing screen
-    async function setStep(step) {
-      hideScanStatus();
-      currentStep = step;
-      updateStepper(step);
+  // Function for changing screen
+  async function setStep(step) {
+    hideScanStatus();
+    currentStep = step;
+    updateStepper(step);
 
-      // SHOW/HIDE SCREENS 
-      el("screen-employee")?.classList.toggle("hidden", step !== "employee");
-      el("screen-project")?.classList.toggle("hidden", step !== "project");
-      el("screen-status")?.classList.toggle("hidden", step !== "status");
+    // SHOW/HIDE SCREENS 
+    el("screen-employee")?.classList.toggle("hidden", step !== "employee");
+    el("screen-project")?.classList.toggle("hidden", step !== "project");
+    el("screen-status")?.classList.toggle("hidden", step !== "status");
 
-      const inStatus = (step === "status");
+    const inStatus = (step === "status");
 
-      // Hide scanner UI in Status
-      el("reader")?.classList.toggle("hidden", inStatus);
+    // Hide scanner UI in Status
+    el("reader")?.classList.toggle("hidden", inStatus);
 
-      // Disable/hide Scan button in Status
-      const scanBtn = el("start-scan");
-      if (scanBtn) {
+    // Disable/hide Scan button in Status
+    const scanBtn = el("start-scan");
+    if (scanBtn) {
         scanBtn.disabled = inStatus;
         scanBtn.classList.toggle("hidden", inStatus);
+    }
+
+    if (inStatus) {
+      if (employeeData?.station) loadProcessesForStation(employeeData.station);
+      await stopScanner();
+
+      renderStopwatch();
+
+      el("btnStartProcess").disabled = runRunning;
+      el("btnStopProcess").disabled = !runRunning;
+      el("btnHoldProcess").disabled = !runRunning;
+
+      if (!runRunning && !resumeLocked) {
+        currentRunId = null;
+        runAccumMs = 0;
+        runStartEpoch = 0;
       }
 
-      if (inStatus) {
-        await stopScanner();
+      // show project info on top
+      if (employeeData) {
+        el("statusStation") && (el("statusStation").innerText = employeeData.station || "-");
+        el("statusManpower") && (el("statusManpower").innerText = employeeData.manpower ?? "-");
+      }
+      if (vesselData) {
+        el("statusProject") && (el("statusProject").innerText = vesselData.projectName || "-");
+        el("statusMaterial") && (el("statusMaterial").innerText = vesselData.materialNumber || "-");
+        el("statusSerial") && (el("statusSerial").innerText = vesselData.serialNumber || "-");
+      }
 
-        renderStopwatch();
-
-        el("btnStartProcess").disabled = runRunning;
-        el("btnStopProcess").disabled = !runRunning;
-
-        if (!runRunning) {
-          currentRunId = null;
-          runAccumMs = 0;
-          runStartEpoch = 0;
-        }
-
-        // show project info on top
-        if (employeeData) {
-          el("statusStation") && (el("statusStation").innerText = employeeData.station || "-");
-          el("statusManpower") && (el("statusManpower").innerText = employeeData.manpower ?? "-");
-        }
-        if (vesselData) {
-          el("statusProject") && (el("statusProject").innerText = vesselData.projectName || "-");
-          el("statusMaterial") && (el("statusMaterial").innerText = vesselData.materialNumber || "-");
-          el("statusSerial") && (el("statusSerial").innerText = vesselData.serialNumber || "-");
-        }
-
-        // lock process dropdown when running
+      // lock process dropdown when running
         const proc = el("processSelect");
         if (proc) proc.disabled = runRunning;
-      }
 
+         // If we have enough data, auto-check for on_hold for the currently selected process
+        if (employeeData && vesselData) {
+          const serialNumber = vesselData.serialNumber;
+          const station = employeeData.station;
+          const procSel = el("processSelect");
+          const processName = procSel ? procSel.value : null;
+
+          if (processName) {
+            try {
+              const onHold = await findOnHoldRun(serialNumber, station, processName);
+              if (onHold) {
+                // DO NOT updateDoc here
+                // DO NOT startStopwatch here
+                 applyResumeRunToUI(onHold);   // just load + lock UI
+              }
+              else {
+                // No on-hold, normal idle state
+                resumeLocked = false;
+                resumeRunStatus = null;
+                syncStatusButtons();
+              }
+            } catch (e) {
+              console.warn("On-hold check failed:", e);
+            }
+          }
+        }
+    }
+      syncStatusButtons();
       saveState();
-    }
+  }
 
 
-/* Get the station state from firestore */ 
+  /* Get the station state from firestore */ 
 
-    async function findActiveRun(serialNumber, station, processName) {
-      const q = query(
-        collection(db, "processRuns"),
-        where("serialNumber", "==", serialNumber),
-        where("station", "==", station),
-        where("processName", "==", processName),
-        where("status", "==", "running"),
-        limit(1)
+  async function findActiveRun(serialNumber, station, processName) {
+    const q = query(
+      collection(db, "processRuns"),
+      where("serialNumber", "==", serialNumber),
+      where("station", "==", station),
+      where("processName", "==", processName),
+      where("status", "==", "running"),
+      limit(1)
       );
-      const snap = await getDocs(q);
-      if (snap.empty) return null;
-      return { id: snap.docs[0].id, ...snap.docs[0].data() };
-    }
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    return { id: snap.docs[0].id, ...snap.docs[0].data() };
+  }
 
-/* Check if the process has ran in database */
 
-async function findCompletedRunToday(serialNumber, station, processName, runDate) {
-  const q = query(
-    collection(db, "processRuns"),
-    where("serialNumber", "==", serialNumber),
-    where("station", "==", station),
-    where("processName", "==", processName),
-    where("runDate", "==", runDate),
-    where("status", "==", "completed"),
-    limit(1)
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  return { id: snap.docs[0].id, ...snap.docs[0].data() };
-}
 
 /* Function to parse the scanned QR code when scan succeeded */
 
-    async function onScanSuccess(decodedText) {
+  async function onScanSuccess(decodedText) {
         const text = decodedText.trim();
 
         // Ignore repeated reads of the same QR within a short window
@@ -568,8 +681,6 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
             stopScanner();          // stop camera
             saveState();            // keep everything
 
-            qrScanned = true;
-
             el("projectName").innerText = projectName;
             el("description").innerText = description;
             el("materialNumber").innerText = materialNumber;
@@ -577,77 +688,77 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
 
         }
 
-        }
+  }
 
 
-    function onScanFailure(_) {}
+  function onScanFailure(_) {}
 
-    function updateScanButtonUI() {
-      const btn = el("start-scan");
-      if (!btn) return;
+  function updateScanButtonUI() {
+    const btn = el("start-scan");
+    if (!btn) return;
 
-      if (scanning) {
-        btn.textContent = "Stop Scanning";
-        btn.style.background = "#dc2626"; // red
-        btn.style.color = "#fff";
-      } else {
-        btn.textContent = "Start Scanning";
-        btn.style.background = "#2563eb"; // blue
-        btn.style.color = "#fff";
-      }
+    if (scanning) {
+      btn.textContent = "Stop Scanning";
+      btn.style.background = "#dc2626"; // red
+      btn.style.color = "#fff";
+    } else {
+      btn.textContent = "Start Scanning";
+      btn.style.background = "#2563eb"; // blue
+      btn.style.color = "#fff";
     }
+  }
 
     
-   async function startScanner() {
-      if (currentStep === "status") return;
-      if (scanning) return;
+  async function startScanner() {
+    if (currentStep === "status") return;
+    if (scanning) return;
 
-      if (!html5Qr) html5Qr = new Html5Qrcode("reader");
+    if (!html5Qr) html5Qr = new Html5Qrcode("reader");
 
-      try {
-        scanning = true;
-        updateScanButtonUI();
+    try {
+      scanning = true;
+      updateScanButtonUI();
 
-        // 1) Try force back camera (best for iPhone)
-        try {
-          await html5Qr.start(
-            { facingMode: "environment" }, //  back camera
-            { fps: 10, qrbox: 250 },
-            (decodedText) => onScanSuccess(decodedText),
-            () => {}
-          );
-          return; // success
-        } catch (e) {
-          // If facingMode fails on some devices, fall back to deviceId
-          console.warn("facingMode environment failed, falling back to deviceId...", e);
-        }
-
-        // 2) Fallback: pick a back camera from list
-        const cameras = await Html5Qrcode.getCameras();
-        if (!cameras || cameras.length === 0) {
-          throw new Error("No camera found.");
-        }
-
-        const backCam =
-          cameras.find(c => /back|rear|environment/i.test(c.label || "")) ||
-          cameras[cameras.length - 1];
-
-        await html5Qr.start(
-          { deviceId: { exact: backCam.id } },
-          { fps: 10, qrbox: 250 },
-          (decodedText) => onScanSuccess(decodedText),
-          () => {}
-        );
-      } catch (err) {
-        console.error(err);
-        scanning = false;
-        updateScanButtonUI();
-        alert("Failed to start camera. Check browser permissions.");
+      // 1) Try force back camera (best for iPhone)
+    try {
+      await html5Qr.start(
+      { facingMode: "environment" }, //  back camera
+      { fps: 10, qrbox: 250 },
+      (decodedText) => onScanSuccess(decodedText),
+        () => {}
+      );
+      return; // success
+      } catch (e) {
+        // If facingMode fails on some devices, fall back to deviceId
+        console.warn("facingMode environment failed, falling back to deviceId...", e);
       }
+
+      // 2) Fallback: pick a back camera from list
+      const cameras = await Html5Qrcode.getCameras();
+      if (!cameras || cameras.length === 0) {
+        throw new Error("No camera found.");
+      }
+
+      const backCam =
+        cameras.find(c => /back|rear|environment/i.test(c.label || "")) ||
+        cameras[cameras.length - 1];
+
+      await html5Qr.start(
+        { deviceId: { exact: backCam.id } },
+        { fps: 10, qrbox: 250 },
+        (decodedText) => onScanSuccess(decodedText),
+          () => {}
+      );
+    } catch (err) {
+      console.error(err);
+      scanning = false;
+      updateScanButtonUI();
+      alert("Failed to start camera. Check browser permissions.");
     }
+  }
 
 
-   async function stopScanner() {
+  async function stopScanner() {
     if (!html5Qr) {
       scanning = false;
       updateScanButtonUI();
@@ -655,12 +766,12 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
     }
 
     try {
-      if (scanning) {
-        await html5Qr.stop();
-      }
+    if (scanning) {
+      await html5Qr.stop();
+    }
 
-      // Clear camera UI safely
-      await html5Qr.clear();
+    // Clear camera UI safely
+    await html5Qr.clear();
 
     } catch (err) {
       console.warn("Stop scanner error:", err);
@@ -669,12 +780,9 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
       html5Qr = null;   //  IMPORTANT: reset instance for clean restart
       updateScanButtonUI();
     }
-  }
+}
 
-    let swRunning = false;
-    let swStartEpoch = 0;   // when started
-    let swAccumMs = 0;      // accumulated time
-    let swTimer = null;
+ 
 
     function formatMs(ms) {
       const totalSec = Math.floor(ms / 1000);
@@ -771,151 +879,190 @@ async function findCompletedRunToday(serialNumber, station, processName, runDate
     });
 
   let startInFlight = false;
+
   el("btnStartProcess").addEventListener("click", async () => {
-    if (startInFlight || runRunning) return;
-    if (!employeeData) return showScanStatus("Scan employee QR first.", "err");
-    if (!vesselData) return showScanStatus("Scan project QR first.", "err");
+  if (startInFlight || runRunning) return;
+  if (!employeeData) return showScanStatus("Scan employee QR first.", "err");
+  if (!vesselData) return showScanStatus("Scan project QR first.", "err");
 
-    const startBtn = el("btnStartProcess");
-    const stopBtn = el("btnStopProcess");
-    const processSel = el("processSelect");
-    const originalStartText = startBtn.textContent;
+  const startBtn = el("btnStartProcess");
+  const stopBtn  = el("btnStopProcess");
+  const holdBtn  = el("btnHoldProcess");
+  const processSel = el("processSelect");
+  const originalStartText = startBtn.textContent;
 
-    startInFlight = true;
-    startBtn.disabled = true;
-    startBtn.textContent = "Starting...";
-    showScanStatus("Starting process...", "info");
+  startInFlight = true;
+  startBtn.disabled = true;
+  startBtn.textContent = "Starting...";
+  showScanStatus("Starting process...", "info");
 
-    try {
-      const serialNumber = vesselData.serialNumber;
-      const station = employeeData.station;
-      const processName = processSel.value;
-      const runDate = getMYDateKey();
+  try {
+    const serialNumber = vesselData.serialNumber;
+    const station = employeeData.station;
+    const processName = processSel.value;
+    const runDate = getMYDateKey();
 
-      // 1) Block if currently running
-      const active = await findActiveRun(serialNumber, station, processName);
-      if (active) {
-        showScanStatus("This process is already running.", "err");
-        return;
+    // 1) Block if already running
+    const active = await findActiveRun(serialNumber, station, processName);
+    if (active) {
+      showScanStatus("This process is already running.", "err");
+      return;
+    }
+
+    // 2) RESUME if we loaded an on-hold run into UI
+    if (resumeRunStatus === "on_hold" && currentRunId) {
+       if (resumeProcessName && processSel.value !== resumeProcessName) {
+        processSel.value = resumeProcessName;
       }
+      // lock process
+      processSel.disabled = true;
+      resumeLocked = true;
 
-      // 2) Block if already completed today
-      const exists = await findAnyRunTodayByStartAt(serialNumber, station, processName);
-      if (exists) {
+      await updateDoc(doc(db, "processRuns", currentRunId), {
+        status: "running",
+        resumedAt: serverTimestamp(),
+        resumedEpochMs: Date.now(),
+        resumedByName: employeeData.employeeName,
+        resumedByNumber: employeeData.employeeNumber
+      });
+
+      // start stopwatch continuing from runAccumMs
+      startBtn.disabled = true;
+      stopBtn.disabled  = false;
+      holdBtn.disabled  = false;
+
+      startStopwatch();
+      showScanStatus("Process resumed (running).", "ok");
+      saveState();
+      return;
+    }
+
+    // 3) Block if already ran TODAY (completed or running or on_hold)
+    const exists = await findAnyRunTodayByStartAt(serialNumber, station, processName);
+    if (exists) {
+
+      //  If it is ON HOLD, load it into UI (stopwatch + lock) instead of only showing error
+      if (exists.status === "on_hold") {
+        applyResumeRunToUI(exists); // uses durationMs + processName + id
         showScanStatus(
-          `Error: Already ran today (${exists.myDateStr}). Status: ${exists.status}`,
-          "err"
+          `Loaded ON HOLD run (${exists.runDate}). Press Start to resume.`,
+          "info"
         );
         return;
       }
 
-      // Disable changing process once you start
-      processSel.disabled = true;
-
-      const payload = {
-        serialNumber,
-        station,
-        processName,
-        runDate,
-        status: "running",
-        startedByName: employeeData.employeeName,
-        startedByNumber: employeeData.employeeNumber,
-        manpower: employeeData.manpower,
-        startAt: serverTimestamp(),
-        startEpochMs: Date.now(),
-        projectName: vesselData.projectName,
-        materialNumber: vesselData.materialNumber,
-        description: vesselData.description,
-        version: vesselData.version
-      };
-
-      const ref = await addDoc(collection(db, "processRuns"), payload);
-      currentRunId = ref.id;
-      saveState();
-
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-
-      runAccumMs = 0;
-      startStopwatch();
-      showScanStatus("Process is running.", "ok");
-    } catch (err) {
-      console.error(err);
-      showScanStatus("Failed to start process. Please try again.", "err");
-    } finally {
-      startInFlight = false;
-      startBtn.textContent = originalStartText;
-      if (!runRunning) startBtn.disabled = false;
+      // Otherwise block for completed/running
+      showScanStatus(
+        `Error: Already ran today (${exists.runDate}). Status: ${exists.status}`,
+        "err"
+      );
+      return;
     }
-  });
 
+    // 4) Prerequisite check - check for all stations
+    const prevList = getAllPrevProcessNames(station, processName);
 
-let pendingStop = null; // stores {runId, durationMs} until modal saved
+    for (const p of prevList) {
+      const ok = await hasCompletedProcess(serialNumber, station, p);
+      if (!ok) {
+        showScanStatus(`Cannot start. Please complete: ${p} first.`, "err");
+        return;
+      }
+    }
+
+    // 5) Normal NEW RUN path
+    processSel.disabled = true;
+    resumeLocked = false;
+
+    const payload = {
+      serialNumber,
+      station,
+      processName,
+      runDate,
+      status: "running",
+      startedByName: employeeData.employeeName,
+      startedByNumber: employeeData.employeeNumber,
+      manpower: employeeData.manpower,
+      startAt: serverTimestamp(),
+      startEpochMs: Date.now(),
+      projectName: vesselData.projectName,
+      materialNumber: vesselData.materialNumber,
+      description: vesselData.description,
+      version: vesselData.version
+    };
+
+    const ref = await addDoc(collection(db, "processRuns"), payload);
+    currentRunId = ref.id;
+    saveState();
+
+    startBtn.disabled = true;
+    stopBtn.disabled  = false;
+    holdBtn.disabled  = false;
+
+    runAccumMs = 0;
+    startStopwatch();
+    showScanStatus("Process is running.", "ok");
+
+  } catch (err) {
+    console.error(err);
+    showScanStatus("Failed to start/resume process. Please try again.", "err");
+  } finally {
+    startInFlight = false;
+    startBtn.textContent = originalStartText;
+    if (!runRunning) startBtn.disabled = false;
+  }
+});
 
 el("btnStopProcess").addEventListener("click", async () => {
-  if (!currentRunId) return alert("No running process to stop.");
+  if (!currentRunId) return showScanStatus("No running process to stop.", "err");
 
-  // DON'T stop stopwatch here
-  pendingStop = {
-    runId: currentRunId,
-    durationMs: getElapsedMs() // capture current duration as "snapshot"
-  };
-
-  openRemarksModal();
-});
-
-el("remarksCancel").addEventListener("click", () => {
-  pendingStop = null;
-  closeRemarksModal();
-  // stopwatch was never stopped, so it keeps moving
-});
-
-el("remarksSave").addEventListener("click", async () => {
-  if (!pendingStop) return closeRemarksModal();
-
-  const { runId } = pendingStop;
-  const remarks = (el("remarksInput").value || "").trim();
-  pendingStop = null;
-
-  // final duration at save moment
+  // final duration now
   const durationMs = getElapsedMs();
   stopStopwatch();
 
-  closeRemarksModal();
-  showSaveOverlay("Saving process...");
+  showSaveOverlay("Saving (Completed)...");
 
   try {
-    await updateDoc(doc(db, "processRuns", runId), {
+    await updateDoc(doc(db, "processRuns", currentRunId), {
       status: "completed",
       endAt: serverTimestamp(),
       endEpochMs: Date.now(),
-      durationMs,
-      remarks,
-      manpower: employeeData?.manpower ?? null
+      durationMs
     });
 
-    showSaveOverlay("Process saved", true);
+    showSaveOverlay("Process completed", true);
 
     setTimeout(async () => {
       hideSaveOverlay();
       resetAllData();
       await setStep("employee");
-    }, 1200);
+    }, 900);
 
   } catch (err) {
     console.error(err);
     hideSaveOverlay();
-    alert("Error saving: " + (err?.message || err));
+    showScanStatus("Failed to stop. Try again.", "err");
   }
-
-  el("processSelect").disabled = false;
 });
 
+el("btnHoldProcess").addEventListener("click", () => {
+  if (!currentRunId) return showScanStatus("No running process to hold.", "err");
+  openHoldModal();
+});
+
+const holdCancelBtn = el("holdCancel");
+if (holdCancelBtn) {
+  holdCancelBtn.addEventListener("click", () => {
+    closeHoldModal();
+    syncStatusButtons();
+  });
+}
 
 
 window.addEventListener("DOMContentLoaded", () => {
   loadState();
   restoreUIFromState();
+  syncStatusButtons();
 
   // DO NOT auto start scanner
   stopScanner();
@@ -928,3 +1075,102 @@ window.addEventListener("beforeunload", (e) => {
     e.returnValue = "";
   }
 });
+
+
+el("holdReason").addEventListener("change", () => {
+  const reason = el("holdReason").value;
+  const remarksBox = el("holdRemarks");
+
+  if (reason === "others") {
+    remarksBox.classList.remove("hidden");
+  } else {
+    remarksBox.classList.add("hidden");
+    remarksBox.value = "";
+  }
+});
+
+el("holdSave").addEventListener("click", async () => {
+  if (!currentRunId) return closeHoldModal();
+
+  const reason = (el("holdReason").value || "").trim();
+  const remarksRaw = (el("holdRemarks").value || "").trim();
+
+  if (!reason) return showScanStatus("Please select a hold reason.", "err");
+
+  // require remarks ONLY if others
+  if (reason === "others" && !remarksRaw) {
+    showScanStatus("Remarks are required when 'Others' is selected.", "err");
+    el("holdRemarks").focus();
+    return;
+  }
+
+  const finalRemarks = (reason === "others") ? remarksRaw : "";
+
+  // capture duration before stopping
+  const durationMs = getElapsedMs();
+  stopStopwatch();
+
+  closeHoldModal();
+  showSaveOverlay("Saving (On Hold)...");
+
+  try {
+    await updateDoc(doc(db, "processRuns", currentRunId), {
+      status: "on_hold",
+      holdAt: serverTimestamp(),
+      holdEpochMs: Date.now(),
+      durationMs,
+      holdReason: reason,
+      remarks: finalRemarks
+    });
+
+    showSaveOverlay("Saved as On Hold", true);
+
+    setTimeout(async () => {
+      hideSaveOverlay();
+      resetAllData();
+      await setStep("employee");
+    }, 900);
+
+  } catch (err) {
+    console.error(err);
+    hideSaveOverlay();
+    showScanStatus("Failed to save On Hold. Try again.", "err");
+  }
+});
+
+el("processSelect")?.addEventListener("change", async () => {
+  if (currentStep !== "status") return;
+  if (!employeeData || !vesselData) return;
+  if (runRunning) return;
+
+  showScanStatus("Checking On Hold status...", "info");
+
+  // Clear resume state
+  resumeLocked = false;
+  resumeRunStatus = null;
+  resumeProcessName = null;
+  currentRunId = null;
+  runAccumMs = 0;
+  runStartEpoch = 0;
+  renderStopwatch();
+  saveState();
+  syncStatusButtons();
+
+  const serialNumber = vesselData.serialNumber;
+  const station = employeeData.station;
+  const processName = el("processSelect").value;
+
+  try {
+    const onHold = await findOnHoldRun(serialNumber, station, processName);
+    if (onHold) {
+      applyResumeRunToUI(onHold);
+    } else {
+      hideScanStatus();
+      syncStatusButtons();
+    }
+  } catch (e) {
+    console.warn("processSelect change onHold check failed:", e);
+    showScanStatus("Failed to check On Hold. Try again.", "err");
+  }
+});
+

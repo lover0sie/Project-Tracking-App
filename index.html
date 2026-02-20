@@ -94,26 +94,48 @@
         <div id="stopwatch">00:00:00</div>
       </div>
       
-      <div class="btn-row">
-        <button id="btnStartProcess">Start</button>
-        <button id="btnStopProcess" disabled>Stop</button>
+       
+      
+    <button id="btnStartProcess">Start</button>
+      
+
+      <!-- Row 2 -->
+      <div class="btnRow">
+        <button id="btnStopProcess" disabled>Completed</button>
+        <button id="btnHoldProcess" disabled>On Hold</button>
       </div>
         
     </section>
 
-    <!-- REMARKS POPUP MODAL -->
-    <div id="remarksModal" class="modal hidden">
-      <div class="modal-card">
-        <h3>Remarks (optional)</h3>
+  <div id="holdModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>Put Process On Hold</h3>
 
-        <textarea id="remarksInput" rows="4" placeholder="Type remarks here..."></textarea>
+  <label for="holdReason">Reason</label>
+    <select id="holdReason">
+      <option value="">Select a reason</option>
+      <option value="rework">Rework Required</option>
+      <option value="item_missing">Item Missing</option>
+      <option value="item_shortage">Material Shortage</option>
+      <option value="resume_tomorrow">Resume Next Shift / Tomorrow</option>
+      <option value="others">Others (specify)</option>
+    </select>
 
-        <div class="modal-actions">
-          <button id="remarksCancel" class="secondary">Cancel</button>
-          <button id="remarksSave">Save</button>
-        </div>
-      </div>
+    <label for="holdRemarks" id="holdRemarksLabel" class="hidden">Remarks (required for “Others”)</label>
+    <textarea
+      id="holdRemarks"
+      class="hidden"
+      rows="4"
+      placeholder="Please explain the reason in detail."
+    ></textarea>
+
+    <div class="modal-actions">
+      <button id="holdCancel" class="secondary">Cancel</button>
+      <button id="holdSave" class="btnWarn">Save</button>
     </div>
+  </div>
+</div>
+
 
     <script type="module" src="js/app.js"></script>
   </div>
