@@ -457,41 +457,19 @@ function saveState() {
   }
 
   // Check database if previous process has completed or not (same serial and station)
+  // Global completion -  if any station has completed the process
   async function hasCompletedProcess(serialNumber, station, processName) {
-    const q = query(
-      collection(db, "processRuns"),
-      where("serialNumber", "==", serialNumber),
-      where("station", "==", station),
-      where("processName", "==", processName),
-      where("status", "==", "completed"),
-      limit(1)
-    );
+  const q = query(
+    collection(db, "processRuns"),
+    where("serialNumber", "==", serialNumber),
+    where("processName", "==", processName),
+    where("status", "==", "completed"),
+    limit(1)
+  );
 
-    const snap = await getDocs(q);
-    return !snap.empty;
-  }
-
-
-  // Find anything that run by today
-  async function findAnyRunTodayByStartAt(serialNumber, station, processName) {
-    const runDate = getMYDateKey(); // "YYYY-MM-DD" MY time
-
-    const q = query(
-      collection(db, "processRuns"),
-      where("serialNumber", "==", serialNumber),
-      where("station", "==", station),
-      where("processName", "==", processName),
-      where("runDate", "==", runDate),
-      where("status", "in", ["running", "completed", "on_hold"]),
-      limit(1)
-    );
-
-    const snap = await getDocs(q);
-    if (snap.empty) return null;
-    return { runDate, id: snap.docs[0].id, ...snap.docs[0].data() };
-  }
-
-    
+  const snap = await getDocs(q);
+  return !snap.empty;
+}
   // Function for changing screen
   async function setStep(step) {
     hideScanStatus();
@@ -628,7 +606,7 @@ function saveState() {
         if (isEmployee) {
           const parts = text.split(";");
           if (parts.length !== 4) {
-            showScanStatus("Invalid Employee QR format. Use: EMP;EmpNo;Name;Station", "err");
+            showScanStatus("Invalid Employee QR format.", "err");
             return;
           }
 
@@ -661,7 +639,7 @@ function saveState() {
             // PROJECT QR: D1;Project Name; Description; Material Number; Serial Number; Model; Chiller Type; Refrigerant
             const parts = text.split(";");
             if (parts.length !== 8) {
-            alert("Invalid Project QR format!");
+            showScanStatus("Invalid Project QR format!", "err");
             return;
             }
 
@@ -880,7 +858,7 @@ function saveState() {
 
   let startInFlight = false;
 
-  el("btnStartProcess").addEventListener("click", async () => {
+ el("btnStartProcess").addEventListener("click", async () => {
   if (startInFlight || runRunning) return;
   if (!employeeData) return showScanStatus("Scan employee QR first.", "err");
   if (!vesselData) return showScanStatus("Scan project QR first.", "err");
@@ -892,9 +870,6 @@ function saveState() {
   const originalStartText = startBtn.textContent;
 
   startInFlight = true;
-  startBtn.disabled = true;
-  startBtn.textContent = "Starting...";
-  showScanStatus("Starting process...", "info");
 
   try {
     const serialNumber = vesselData.serialNumber;
@@ -909,12 +884,15 @@ function saveState() {
       return;
     }
 
-    // 2) RESUME if we loaded an on-hold run into UI
+    // 2) RESUME FIRST if UI already loaded an on-hold run
     if (resumeRunStatus === "on_hold" && currentRunId) {
-       if (resumeProcessName && processSel.value !== resumeProcessName) {
+      startBtn.disabled = true;
+      startBtn.textContent = "Starting...";
+      showScanStatus("Resuming process...", "info");
+
+      if (resumeProcessName && processSel.value !== resumeProcessName) {
         processSel.value = resumeProcessName;
       }
-      // lock process
       processSel.disabled = true;
       resumeLocked = true;
 
@@ -926,10 +904,8 @@ function saveState() {
         resumedByNumber: employeeData.employeeNumber
       });
 
-      // start stopwatch continuing from runAccumMs
-      startBtn.disabled = true;
-      stopBtn.disabled  = false;
-      holdBtn.disabled  = false;
+      stopBtn.disabled = false;
+      holdBtn.disabled = false;
 
       startStopwatch();
       showScanStatus("Process resumed (running).", "ok");
@@ -937,31 +913,28 @@ function saveState() {
       return;
     }
 
-    // 3) Block if already ran TODAY (completed or running or on_hold)
-    const exists = await findAnyRunTodayByStartAt(serialNumber, station, processName);
-    if (exists) {
-
-      //  If it is ON HOLD, load it into UI (stopwatch + lock) instead of only showing error
-      if (exists.status === "on_hold") {
-        applyResumeRunToUI(exists); // uses durationMs + processName + id
-        showScanStatus(
-          `Loaded ON HOLD run (${exists.runDate}). Press Start to resume.`,
-          "info"
-        );
-        return;
-      }
-
-      // Otherwise block for completed/running
-      showScanStatus(
-        `Error: Already ran today (${exists.runDate}). Status: ${exists.status}`,
-        "err"
-      );
+    // 3) If not loaded yet, check DB for ON HOLD and load it
+    const onHold = await findOnHoldRun(serialNumber, station, processName);
+    if (onHold) {
+      applyResumeRunToUI(onHold);
+      showScanStatus(`Loaded ON HOLD run. Press Start to resume.`, "info");
       return;
     }
 
-    // 4) Prerequisite check - check for all stations
-    const prevList = getAllPrevProcessNames(station, processName);
+    // 4) Block if completed
+    const completed = await hasCompletedProcess(serialNumber, station, processName);
+    if (completed) {
+      showScanStatus("This process is already COMPLETED. Start is blocked.", "err");
+      return;
+    }
 
+    // Now we are truly starting a new run
+    startBtn.disabled = true;
+    startBtn.textContent = "Starting...";
+    showScanStatus("Starting process...", "info");
+
+    // 5) Prerequisite check
+    const prevList = getAllPrevProcessNames(station, processName);
     for (const p of prevList) {
       const ok = await hasCompletedProcess(serialNumber, station, p);
       if (!ok) {
@@ -970,7 +943,7 @@ function saveState() {
       }
     }
 
-    // 5) Normal NEW RUN path
+    // 6) New run
     processSel.disabled = true;
     resumeLocked = false;
 
@@ -995,9 +968,8 @@ function saveState() {
     currentRunId = ref.id;
     saveState();
 
-    startBtn.disabled = true;
-    stopBtn.disabled  = false;
-    holdBtn.disabled  = false;
+    stopBtn.disabled = false;
+    holdBtn.disabled = false;
 
     runAccumMs = 0;
     startStopwatch();
@@ -1010,38 +982,6 @@ function saveState() {
     startInFlight = false;
     startBtn.textContent = originalStartText;
     if (!runRunning) startBtn.disabled = false;
-  }
-});
-
-el("btnStopProcess").addEventListener("click", async () => {
-  if (!currentRunId) return showScanStatus("No running process to stop.", "err");
-
-  // final duration now
-  const durationMs = getElapsedMs();
-  stopStopwatch();
-
-  showSaveOverlay("Saving (Completed)...");
-
-  try {
-    await updateDoc(doc(db, "processRuns", currentRunId), {
-      status: "completed",
-      endAt: serverTimestamp(),
-      endEpochMs: Date.now(),
-      durationMs
-    });
-
-    showSaveOverlay("Process completed", true);
-
-    setTimeout(async () => {
-      hideSaveOverlay();
-      resetAllData();
-      await setStep("employee");
-    }, 900);
-
-  } catch (err) {
-    console.error(err);
-    hideSaveOverlay();
-    showScanStatus("Failed to stop. Try again.", "err");
   }
 });
 
