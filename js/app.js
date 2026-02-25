@@ -56,9 +56,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     let resumeLocked = false;
     let resumeRunStatus = null; // "on_hold" | null
     let resumeProcessName = null;
+    let startLockedByStatus = false;  // completed lock
 
    /* ============== Helper functions ====================================== */
 
+  /* Get the previous stations */
   function getAllPrevProcessNames(station, currentProcessName) {
     const list = PROCESS_BY_STATION[station] || [];
     const idx = list.indexOf(currentProcessName);
@@ -215,6 +217,7 @@ function resetAllData() {
   if (el("qr-result")) el("qr-result").textContent = "";
 
   stateEnabled = true;
+  startLockedByStatus = false;
 }
 
 
@@ -407,19 +410,26 @@ function saveState() {
     }
  }
 
- function syncStatusButtons() {
+  function syncStatusButtons() {
     const startBtn = el("btnStartProcess");
     const stopBtn  = el("btnStopProcess");
     const holdBtn  = el("btnHoldProcess");
     const procSel  = el("processSelect");
-
     if (!startBtn || !stopBtn || !holdBtn) return;
 
-    startBtn.disabled = runRunning;     // running -> cannot start again
-    stopBtn.disabled  = !runRunning;    // not running -> can't stop
-    holdBtn.disabled  = !runRunning;    // not running -> can't hold
+    // Start is allowed when:
+    // - NOT running
+    // - NOT in-flight
+    // - NOT locked as completed
+    const startDisabled = runRunning || startInFlight || startLockedByStatus;
+
+    startBtn.disabled = startDisabled;
+    stopBtn.disabled  = !runRunning;
+    holdBtn.disabled  = !runRunning;
+
+    // process dropdown locked if running or resume-locked
     if (procSel) procSel.disabled = runRunning || resumeLocked;
- }
+  }
 
   function restoreUIFromState() {
     // Restore employee UI
@@ -496,12 +506,8 @@ function saveState() {
     if (inStatus) {
       if (employeeData?.station) loadProcessesForStation(employeeData.station);
       await stopScanner();
-
       renderStopwatch();
-
-      el("btnStartProcess").disabled = runRunning;
-      el("btnStopProcess").disabled = !runRunning;
-      el("btnHoldProcess").disabled = !runRunning;
+      syncStatusButtons();
 
       if (!runRunning && !resumeLocked) {
         currentRunId = null;
@@ -870,6 +876,7 @@ function saveState() {
   const originalStartText = startBtn.textContent;
 
   startInFlight = true;
+  syncStatusButtons();
 
   try {
     const serialNumber = vesselData.serialNumber;
@@ -881,12 +888,13 @@ function saveState() {
     const active = await findActiveRun(serialNumber, station, processName);
     if (active) {
       showScanStatus("This process is already running.", "err");
+      startLockedByStatus = true;      // lock start after this error
+      syncStatusButtons();
       return;
     }
 
     // 2) RESUME FIRST if UI already loaded an on-hold run
     if (resumeRunStatus === "on_hold" && currentRunId) {
-      startBtn.disabled = true;
       startBtn.textContent = "Starting...";
       showScanStatus("Resuming process...", "info");
 
@@ -922,14 +930,15 @@ function saveState() {
     }
 
     // 4) Block if completed
-    const completed = await hasCompletedProcess(serialNumber, station, processName);
+   const completed = await hasCompletedProcess(serialNumber, station, processName);
     if (completed) {
+      startLockedByStatus = true;
       showScanStatus("This process is already COMPLETED. Start is blocked.", "err");
+      syncStatusButtons();
       return;
     }
 
     // Now we are truly starting a new run
-    startBtn.disabled = true;
     startBtn.textContent = "Starting...";
     showScanStatus("Starting process...", "info");
 
@@ -981,7 +990,7 @@ function saveState() {
   } finally {
     startInFlight = false;
     startBtn.textContent = originalStartText;
-    if (!runRunning) startBtn.disabled = false;
+    syncStatusButtons();
   }
 });
 
@@ -1083,15 +1092,19 @@ el("processSelect")?.addEventListener("change", async () => {
   if (!employeeData || !vesselData) return;
   if (runRunning) return;
 
-  showScanStatus("Checking On Hold status...", "info");
+  showScanStatus("Checking status...", "info");
 
-  // Clear resume state
+  // Reset selection state
   resumeLocked = false;
   resumeRunStatus = null;
   resumeProcessName = null;
   currentRunId = null;
   runAccumMs = 0;
   runStartEpoch = 0;
+
+  // IMPORTANT: unlock completed lock when user selects a different process
+  startLockedByStatus = false;
+
   renderStopwatch();
   saveState();
   syncStatusButtons();
@@ -1101,16 +1114,32 @@ el("processSelect")?.addEventListener("change", async () => {
   const processName = el("processSelect").value;
 
   try {
+    // 1) on_hold -> load UI, Start should be enabled
     const onHold = await findOnHoldRun(serialNumber, station, processName);
     if (onHold) {
-      applyResumeRunToUI(onHold);
-    } else {
+      applyResumeRunToUI(onHold); // sets resumeLocked/resumeRunStatus/currentRunId/runAccumMs
       hideScanStatus();
       syncStatusButtons();
+      return;
     }
+
+    // 2) completed -> lock Start
+    const completed = await hasCompletedProcess(serialNumber, station, processName);
+    if (completed) {
+      startLockedByStatus = true;
+      showScanStatus("This process is already COMPLETED.", "err");
+      syncStatusButtons();
+      return;
+    }
+
+    // 3) available
+    hideScanStatus();
+    syncStatusButtons();
+
   } catch (e) {
-    console.warn("processSelect change onHold check failed:", e);
-    showScanStatus("Failed to check On Hold. Try again.", "err");
+    console.warn("processSelect check failed:", e);
+    showScanStatus("Failed to check status. Try again.", "err");
+    startLockedByStatus = false; // safe default
+    syncStatusButtons();
   }
 });
-
