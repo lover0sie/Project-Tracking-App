@@ -215,14 +215,17 @@ function resetAllData() {
   el("description").innerText = "-";
   el("materialNumber").innerText = "-";
   el("serialNumber").innerText = "-";
+  el("type").innerText = "-";
 
   if (el("statusProject")) el("statusProject").innerText = "-";
   if (el("statusMaterial")) el("statusMaterial").innerText = "-";
   if (el("statusSerial")) el("statusSerial").innerText = "-";
   if (el("statusStation")) el("statusStation").innerText = "-";
+  if (el("statusType")) el("statusType").innerText = "-";
 
   if (el("manpowerInput")) el("manpowerInput").value = "";
   if (el("statusManpower")) el("statusManpower").innerText = "-";
+
 
   const sel = el("processSelect");
   if (sel) {
@@ -410,6 +413,7 @@ function saveState() {
         el("description").innerText = vesselData.description;
         el("materialNumber").innerText = vesselData.materialNumber;
         el("serialNumber").innerText = vesselData.serialNumber;
+        el("type").innerText = vesselData.vesselType || vesselData.type || "-";
       }
 
       setStep(currentStep);
@@ -463,6 +467,7 @@ function saveState() {
       el("description").innerText = vesselData.description || "-";
       el("materialNumber").innerText = vesselData.materialNumber || "-";
       el("serialNumber").innerText = vesselData.serialNumber || "-";
+      el("type").innerText = vesselData.vesselType || vesselData.type || "-";
     }
 
     // Go to correct screen (this also stops scanner if status)
@@ -541,6 +546,7 @@ function saveState() {
         el("statusProject") && (el("statusProject").innerText = vesselData.projectName || "-");
         el("statusMaterial") && (el("statusMaterial").innerText = vesselData.materialNumber || "-");
         el("statusSerial") && (el("statusSerial").innerText = vesselData.serialNumber || "-");
+        el("statusType") && (el("statusType").innerText = vesselData.vesselType || vesselData.type || "-");
       }
 
       // lock process dropdown when running
@@ -625,7 +631,7 @@ function saveState() {
           return;
         }
 
-        // EMPLOYEE QR: EMP;EmpNo;Name;Station
+        // EMPLOYEE QR
         if (isEmployee) {
           const parts = text.split(";");
           if (parts.length !== 4) {
@@ -659,34 +665,87 @@ function saveState() {
 
 
         } else {
-            // PROJECT QR: D1;Project Name; Description; Material Number; Serial Number; Model; Chiller Type; Refrigerant
-            const parts = text.split(";");
-            if (parts.length !== 8) {
-            showScanStatus("Invalid Project QR format!", "err");
-            return;
-            }
+          const parts = text.split(";").map(s => s.trim());
 
-            const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
-            vesselData = { 
-              version, 
-              projectName, 
-              description, 
-              materialNumber, 
-              serialNumber, 
-              model, 
-              type, 
-              refrigerant 
+          // === PV QR (9 fields) ===
+          if (parts.length === 9) {
+            const [
+              version,
+              projectName,
+              partNumber,
+              materialNumber,
+              chillerSerialNumber,
+              pvSerialNumber,
+              typeText,
+              model,
+              refrigerant
+            ] = parts;
+
+            // Prefer the "type" from QR, but keep a derived fallback from suffix
+            const derived = getVesselTypeFromPvSerial(pvSerialNumber);
+            const vesselType = (typeText || "").trim() || derived;
+
+            vesselData = {
+              qrKind: "PV",
+              version,
+              projectName,
+              partNumber,
+              materialNumber,
+              chillerSerialNumber,
+              pvSerialNumber,
+              vesselType,
+              model,
+              refrigerant,
+
+              // keep compatibility with your existing code
+              serialNumber: pvSerialNumber,
+              description: partNumber // optional: you can set to "-" or keep old UI usage
             };
 
-            showScanStatus("Project QR code successfully scanned.","ok");
-            stopScanner();          // stop camera
-            saveState();            // keep everything
+            showScanStatus("PV QR code successfully scanned.", "ok");
+            await stopScanner();
+            saveState();
 
-            el("projectName").innerText = projectName;
-            el("description").innerText = description;
-            el("materialNumber").innerText = materialNumber;
-            el("serialNumber").innerText = serialNumber;
+            setText("projectName", projectName);
+            setText("description", partNumber);          // or set "-" if you don't want this
+            setText("materialNumber", materialNumber);
+            setText("serialNumber", pvSerialNumber);
+            setText("type", vesselType);
 
+            return;
+          }
+
+          // === CHILLER QR (8 fields) ===
+          if (parts.length === 8) {
+            const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
+
+            vesselData = {
+              qrKind: "CHILLER",
+              version,
+              projectName,
+              description,
+              materialNumber,
+              serialNumber, // chiller serial
+              model,
+              type,         // WATER-COOLED/AIR-COOLED (your current meaning)
+              refrigerant
+            };
+
+            showScanStatus("Chiller QR code successfully scanned.", "ok");
+            await stopScanner();
+            saveState();
+
+            setText("projectName", projectName);
+            setText("description", description);
+            setText("materialNumber", materialNumber);
+            setText("serialNumber", serialNumber);
+            setText("type", type); // for chiller QR, this shows chiller type
+
+            return;
+          }
+
+          showScanStatus("Invalid Project QR format!", "err");
+          return;
         }
 
   }
@@ -986,7 +1045,17 @@ function saveState() {
       projectName: vesselData.projectName,
       materialNumber: vesselData.materialNumber,
       description: vesselData.description,
-      version: vesselData.version
+      version: vesselData.version,
+
+      // Added to accommodate to vessel QR
+      qrKind: vesselData.qrKind || "UNKNOWN",
+      chillerSerialNumber: vesselData.chillerSerialNumber || null, // PV only
+      pvSerialNumber: vesselData.pvSerialNumber || null,           // PV only
+      vesselType: vesselData.vesselType || null,                   // PV only
+      partNumber: vesselData.partNumber || null,                   // PV only
+      partDescription: vesselData.partDescription || null,         // PV only
+      model: vesselData.model || null,
+      refrigerant: vesselData.refrigerant || null
     };
 
     const ref = await addDoc(collection(db, "processRuns"), payload);
