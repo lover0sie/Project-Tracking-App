@@ -30,6 +30,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
   /* ============== Initialize variables ================================ */
   /* Initialize variables */
 
+    const STATE_KEY = "qrAppState_v1";
+
     let html5Qr = null;
     let scanning = false;
     let vesselData = null;   // vessel
@@ -48,17 +50,32 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     // Prevent repeated prompts from the same QR / rapid callbacks
     let lastDecodedText = "";
     let lastDecodedAt = 0;
-    let alertLock = false;
-
     let stateEnabled = true;
 
-    const STATE_KEY = "qrAppState_v1";
     let resumeLocked = false;
     let resumeRunStatus = null; // "on_hold" | null
     let resumeProcessName = null;
     let startLockedByStatus = false;  // completed lock
+    let startInFlight = false;
+    let pendingStop = null; // stores {runId, durationMs} until modal saved
 
    /* ============== Helper functions ====================================== */
+
+    function getVesselTypeFromPvSerial(pvSerial = "") {
+    const suffix = pvSerial.trim().slice(-1).toUpperCase();
+    const map = {
+      E: "EVAPORATOR",
+      C: "CONDENSER",
+      J: "ECONOMIZER",
+      Y: "OIL SEPARATOR",
+    };
+    return map[suffix] || "UNKNOWN";
+  }
+
+  function setText(id, value) {
+    const node = el(id);
+    if (node) node.innerText = value ?? "-";
+  }
 
   /* Get the previous stations */
   function getAllPrevProcessNames(station, currentProcessName) {
@@ -862,7 +879,6 @@ function saveState() {
       else await startScanner();
     });
 
-  let startInFlight = false;
 
  el("btnStartProcess").addEventListener("click", async () => {
   if (startInFlight || runRunning) return;
@@ -994,6 +1010,48 @@ function saveState() {
   }
 });
 
+el("btnStopProcess").addEventListener("click", async () => {
+  if (!currentRunId) {
+    showScanStatus("No running process to complete.", "err");
+    return;
+  }
+
+  if (!runRunning) {
+    showScanStatus("Process is not running.", "err");
+    return;
+  }
+
+  const durationMs = getElapsedMs();
+  stopStopwatch();
+
+  showSaveOverlay("Saving (Completed)...");
+
+  try {
+    await updateDoc(doc(db, "processRuns", currentRunId), {
+      status: "completed",
+      endAt: serverTimestamp(),
+      endEpochMs: Date.now(),
+      durationMs
+    });
+
+    showSaveOverlay("Process completed", true);
+
+    setTimeout(async () => {
+      hideSaveOverlay();
+      resetAllData();
+      startLockedByStatus = false;   // unlock everything
+      await setStep("employee");
+      syncStatusButtons();
+    }, 900);
+
+  } catch (err) {
+    console.error(err);
+    hideSaveOverlay();
+    showScanStatus("Failed to complete process. Try again.", "err");
+  }
+});
+
+
 el("btnHoldProcess").addEventListener("click", () => {
   if (!currentRunId) return showScanStatus("No running process to hold.", "err");
   openHoldModal();
@@ -1006,7 +1064,6 @@ if (holdCancelBtn) {
     syncStatusButtons();
   });
 }
-
 
 window.addEventListener("DOMContentLoaded", () => {
   loadState();
