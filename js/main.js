@@ -314,3 +314,5 @@ window.addEventListener("DOMContentLoaded", async () => {
   await stopScanner();
   updateScanButtonUI();
 });
+
+/* Thank you
