@@ -1,3 +1,5 @@
+/* Main heart of the program */
+
 import { state, loadState, saveState } from "./state.js";
 import {
   el,
@@ -49,6 +51,16 @@ async function setStep(step) {
   if (inStatus) {
     if (state.employeeData?.station) loadProcessesForStation(state.employeeData.station);
 
+    //  restore selection BEFORE any DB checks
+    const procSel = el("processSelect");
+    if (procSel && state.selectedProcessName) {
+        procSel.value = state.selectedProcessName;
+    } else if (procSel) {
+        // fallback: store whatever is currently selected (initial process)
+        state.selectedProcessName = procSel.value || null;
+        saveState();
+    }
+
     await stopScanner();
     renderStopwatch();
     syncStatusButtons();
@@ -72,7 +84,7 @@ async function setStep(step) {
     }
 
     // auto-check on hold for selected process
-    if (state.employeeData && state.vesselData) {
+    if (state.employeeData && state.vesselData && procSel?.value) {
       const serialNumber = state.vesselData.serialNumber;
       const station = state.employeeData.station;
       const procSel = el("processSelect");
@@ -226,6 +238,10 @@ el("holdSave")?.addEventListener("click", async () => {
 });
 
 el("processSelect")?.addEventListener("change", async () => {
+  const proc = el("processSelect")
+  if (proc) state.selectedProcessName = proc.value;
+  saveState()
+  
   if (state.currentStep !== "status") return;
   if (!state.employeeData || !state.vesselData) return;
   if (state.runRunning) return;

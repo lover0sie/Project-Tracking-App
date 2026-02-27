@@ -67,12 +67,19 @@ export function loadProcessesForStation(station) {
   if (!sel) return;
 
   sel.innerHTML = "";
+
   list.forEach(p => {
     const opt = document.createElement("option");
     opt.value = p;
     opt.textContent = p;
     sel.appendChild(opt);
   });
+
+  if (state.selectedProcessName && list.includes(state.selectedProcessName)) {
+    sel.value = state.selectedProcessName;
+  } else {
+    state.selectedProcessName = sel.value || null;
+  }
 }
 
 export function renderStopwatch() {
@@ -133,7 +140,7 @@ export function resetAllData() {
   state.resumeProcessName = null;
 
   state.stateEnabled = false;
-  localStorage.removeItem("qrAppState_v1");
+  sessionStorage.removeItem("qrAppState_v1");
 
   state.employeeData = null;
   state.vesselData = null;

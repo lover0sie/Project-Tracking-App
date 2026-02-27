@@ -143,14 +143,16 @@ export function saveState() {
     runAccumMs: state.runAccumMs,
     resumeLocked: state.resumeLocked,
     resumeRunStatus: state.resumeRunStatus,
-    resumeProcessName: state.resumeProcessName
+    resumeProcessName: state.resumeProcessName,
+    selectedProcessName: state.selectedProcessName
   };
 
-  localStorage.setItem(STATE_KEY, JSON.stringify(snapshot));
+  // user session storage instead of localstorage
+  sessionStorage.setItem(STATE_KEY, JSON.stringify(snapshot)); 
 }
 
 export function loadState() {
-  const raw = localStorage.getItem(STATE_KEY);
+  const raw = sessionStorage.getItem(STATE_KEY);
   if (!raw) return;
 
   try {
@@ -168,8 +170,10 @@ export function loadState() {
     state.resumeLocked = !!s.resumeLocked;
     state.resumeRunStatus = s.resumeRunStatus || null;
     state.resumeProcessName = s.resumeProcessName || null;
+    
+    state.selectedProcessName = s.selectedProcessName || null;
   } catch (e) {
     console.error("State load failed", e);
-    localStorage.removeItem(STATE_KEY);
+    sessionStorage.removeItem(STATE_KEY);
   }
 }
