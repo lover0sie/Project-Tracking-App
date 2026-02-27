@@ -86,7 +86,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
   }
 
    /* Helper to find the hold status */
- 
   async function findOnHoldRun(serialNumber, station, processName) {
   const q = query(
     collection(db, "processRuns"),
