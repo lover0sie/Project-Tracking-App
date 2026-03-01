@@ -1,3 +1,5 @@
+/* Thank you to DRM-SA PE Team (Najmi, Muaz, JJ, Syu) and our boss Henry for ideas during brainstorm session */
+
 /* Main heart of the program */
 
 import { state, loadState, saveState } from "./state.js";
@@ -6,7 +8,7 @@ import {
   hideScanStatus,
   showScanStatus,
   updateStepper,
-  loadProcessesForStation,
+  loadProcessesForVessel,
   renderStopwatch,
   syncStatusButtons,
   openHoldModal,
@@ -49,7 +51,9 @@ async function setStep(step) {
   }
 
   if (inStatus) {
-    if (state.employeeData?.station) loadProcessesForStation(state.employeeData.station);
+    if (state.vesselData) {
+      loadProcessesForVessel(state.vesselData);
+    }
 
     //  restore selection BEFORE any DB checks
     const procSel = el("processSelect");
@@ -117,7 +121,9 @@ function restoreUIFromState() {
     el("empName").innerText = state.employeeData.employeeName || "-";
     el("empNo").innerText = state.employeeData.employeeNumber || "-";
     el("empStation").innerText = state.employeeData.station || "-";
-    loadProcessesForStation(state.employeeData.station);
+    if (state.vesselData) {
+      loadProcessesForVessel(state.vesselData);
+    }
   }
 
   // restore project UI
@@ -175,6 +181,10 @@ el("to-status")?.addEventListener("click", () => {
     alert("Please scan project QR first.");
     return;
   }
+
+  //  pre-load processes before switching screen
+  loadProcessesForVessel(state.vesselData);
+
   setStep("status");
 });
 
@@ -241,6 +251,9 @@ el("processSelect")?.addEventListener("change", async () => {
   const proc = el("processSelect")
   if (proc) state.selectedProcessName = proc.value;
   saveState()
+
+
+  syncStatusButtons(); // Start button re-enables as soon as a real process is selected:
   
   if (state.currentStep !== "status") return;
   if (!state.employeeData || !state.vesselData) return;
@@ -315,4 +328,3 @@ window.addEventListener("DOMContentLoaded", async () => {
   updateScanButtonUI();
 });
 
-/* Thank you

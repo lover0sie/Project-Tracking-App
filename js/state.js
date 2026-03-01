@@ -62,6 +62,60 @@ export const PROCESS_BY_STATION = {
   ]
 };
 
+// Vessel -> processes
+export const PROCESS_BY_VESSEL = {
+  "EVAPORATOR": [
+    "6, 7, 8 - Hole bevelling, connector welding, fitting internal plate and GMAW C&B",
+    "9, 10, 11 - Distribution box, tube support and bush, tubesheet fitting and welding",
+    "12, 13 - Bracket, attachment, side plate, and base fitting and welding and copper tube brazing",
+    "14 - Tube slotting and expansion",
+    "15 - Primer painting",
+    "16 - Pneumatic testing",
+    "17 - Hydrostatic testing",
+    "18, 19 - Primer (weld seam) and top painting"
+  ],
+
+   "CONDENSER": [
+    "6, 7, 8 - Hole bevelling, connector welding, fitting internal plate and GMAW C&B",
+    "9, 10, 11 - Distribution box, tube support and bush, tubesheet fitting and welding",
+    "12, 13 - Bracket, attachment, side plate, and base fitting and welding and copper tube brazing",
+    "14 - Tube slotting and expansion",
+    "15 - Primer painting",
+    "16 - Pneumatic testing",
+    "17 - Hydrostatic testing",
+    "18, 19 - Primer (weld seam) and top coat painting"
+  ],
+
+  "OIL SEPARATOR":[
+    "6, 7 - Hole bevelling and connector welding",
+    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
+    "12 - Bracket and attachment fitting and welding",
+    "15 - Primer painting",
+    "16 - Pneumatic testing",
+    "19 - Top coat painting"
+  ],
+
+  "ECONOMIZER":[
+    "6, 7 - Hole bevelling and connector welding",
+    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
+    "12 - Bracket and attachment fitting and welding",
+    "15 - Primer painting",
+    "16 - Pneumatic testing",
+    "19 - Top coat painting"
+  ]
+}
+
+
+// clean up vessel type
+export function getVesselTypeKey(vesselData) {
+  const raw =
+    (typeof vesselData === "string"
+      ? vesselData
+      : (vesselData?.vesselType || vesselData?.type || "")
+    );
+
+  return raw.trim().toUpperCase();
+}
 export function getVesselTypeFromPvSerial(pvSerial = "") {
   const suffix = pvSerial.trim().slice(-1).toUpperCase();
   const map = { E: "EVAPORATOR", C: "CONDENSER", J: "ECONOMIZER", Y: "OIL SEPARATOR" };

@@ -1,5 +1,5 @@
 import { state, saveState, shouldIgnoreDuplicate, getVesselTypeFromPvSerial } from "./state.js";
-import { el, setText, showScanStatus, loadProcessesForStation } from "./ui.js";
+import { el, setText, showScanStatus, loadProcessesForVessel } from "./ui.js";
 
 /* Html5Qrcode is global */
 
@@ -126,7 +126,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
     const mp = el("manpowerInput");
     if (mp) mp.value = "";
 
-    loadProcessesForStation(station);
+    loadProcessesForVessel(state.vesselData);
 
     saveState();
 

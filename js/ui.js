@@ -1,4 +1,4 @@
-import { state, PROCESS_BY_STATION, formatMs, getElapsedMs, saveState } from "./state.js";
+import { state, PROCESS_BY_VESSEL, getVesselTypeKey, formatMs, getElapsedMs, saveState } from "./state.js";
 
 export const el = (id) => document.getElementById(id);
 
@@ -61,12 +61,29 @@ export function updateStepper(step) {
   if (fill) fill.style.width = (idx === 1 ? 0 : idx === 2 ? 50 : 100) + "%";
 }
 
-export function loadProcessesForStation(station) {
-  const list = PROCESS_BY_STATION[station] || ["General Process"];
+export function loadProcessesForVessel(vesselData = state.vesselData) {
   const sel = el("processSelect");
   if (!sel) return;
 
   sel.innerHTML = "";
+
+  console.log("vesselData:", vesselData);
+  console.log("vesselKey:", getVesselTypeKey(vesselData));
+  console.log("keys:", Object.keys(PROCESS_BY_VESSEL));
+
+  // placeholder
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "Select process...";
+  ph.disabled = true;
+
+  // Only select placeholder if there is NO valid saved process
+  const saved = state.selectedProcessName;
+  const vesselKey = getVesselTypeKey(vesselData);
+  const list = PROCESS_BY_VESSEL[vesselKey] || [];
+
+  ph.selected = !(saved && list.includes(saved));
+  sel.appendChild(ph);
 
   list.forEach(p => {
     const opt = document.createElement("option");
@@ -75,11 +92,15 @@ export function loadProcessesForStation(station) {
     sel.appendChild(opt);
   });
 
-  if (state.selectedProcessName && list.includes(state.selectedProcessName)) {
-    sel.value = state.selectedProcessName;
+  if (saved && list.includes(saved)) {
+    sel.value = saved;
   } else {
-    state.selectedProcessName = sel.value || null;
+    // keep placeholder showing
+    sel.value = "";
+    state.selectedProcessName = null;
+    saveState();
   }
+
 }
 
 export function renderStopwatch() {

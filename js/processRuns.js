@@ -99,10 +99,13 @@ export function applyResumeRunToUI(runDoc) {
 }
 
 export async function startOrResumeRun() {
+  const processName = document.getElementById("processSelect")?.value;
+
   if (state.startInFlight || state.runRunning) return;
   if (!state.employeeData) return showScanStatus("Scan employee QR first.", "err");
   if (!state.vesselData) return showScanStatus("Scan project QR first.", "err");
-
+  if (!processName) return showScanStatus("Please select a process before starting.", "err");
+  
   const startBtn = el("btnStartProcess");
   const stopBtn = el("btnStopProcess");
   const holdBtn = el("btnHoldProcess");
