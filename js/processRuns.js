@@ -28,9 +28,19 @@ import {
   stopStopwatch
 } from "./ui.js";
 
+function runsCol() {
+  if (!state.chillerSerialNumber) throw new Error("Missing state.chillerSerialNumber");
+  return collection(db, "processRuns", state.chillerSerialNumber, "runs");
+}
+
+function runDoc(runId) {
+  if (!state.chillerSerialNumber) throw new Error("Missing state.chillerSerialNumber");
+  return doc(db, "processRuns", state.chillerSerialNumber, "runs", runId);
+}
+
 export async function findOnHoldRun(serialNumber, station, processName) {
   const q = query(
-    collection(db, "processRuns"),
+    runsCol(),
     where("serialNumber", "==", serialNumber),
     where("station", "==", station),
     where("processName", "==", processName),
@@ -45,7 +55,7 @@ export async function findOnHoldRun(serialNumber, station, processName) {
 
 export async function findActiveRun(serialNumber, station, processName) {
   const q = query(
-    collection(db, "processRuns"),
+    runsCol(),
     where("serialNumber", "==", serialNumber),
     where("station", "==", station),
     where("processName", "==", processName),
@@ -60,7 +70,7 @@ export async function findActiveRun(serialNumber, station, processName) {
 
 export async function hasCompletedProcess(serialNumber, processName) {
   const q = query(
-    collection(db, "processRuns"),
+    runsCol(),
     where("serialNumber", "==", serialNumber),
     where("processName", "==", processName),
     where("status", "==", "completed"),
@@ -99,17 +109,20 @@ export function applyResumeRunToUI(runDoc) {
 }
 
 export async function startOrResumeRun() {
-  const processName = document.getElementById("processSelect")?.value;
-
+  if (!state.chillerSerialNumber) {
+    return showScanStatus("Missing chiller serial number. Scan PV/Chiller QR again.", "err");
+  }
   if (state.startInFlight || state.runRunning) return;
   if (!state.employeeData) return showScanStatus("Scan employee QR first.", "err");
   if (!state.vesselData) return showScanStatus("Scan project QR first.", "err");
+
+  const processSel = el("processSelect");
+  const processName = processSel?.value || "";
   if (!processName) return showScanStatus("Please select a process before starting.", "err");
-  
+
   const startBtn = el("btnStartProcess");
   const stopBtn = el("btnStopProcess");
   const holdBtn = el("btnHoldProcess");
-  const processSel = el("processSelect");
   if (!startBtn || !processSel) return;
 
   const originalStartText = startBtn.textContent;
@@ -120,7 +133,6 @@ export async function startOrResumeRun() {
   try {
     const serialNumber = state.vesselData.serialNumber;
     const station = state.employeeData.station;
-    const processName = processSel.value;
     const runDate = getMYDateKey();
 
     // 1) Block if already running
@@ -143,13 +155,13 @@ export async function startOrResumeRun() {
       processSel.disabled = true;
       state.resumeLocked = true;
 
-      await updateDoc(doc(db, "processRuns", state.currentRunId), {
-        status: "running",
-        resumedAt: serverTimestamp(),
-        resumedEpochMs: Date.now(),
-        resumedByName: state.employeeData.employeeName,
-        resumedByNumber: state.employeeData.employeeNumber
-      });
+    await updateDoc(runDoc(state.currentRunId), {
+      status: "running",
+      resumedAt: serverTimestamp(),
+      resumedEpochMs: Date.now(),
+      resumedByName: state.employeeData.employeeName,
+      resumedByNumber: state.employeeData.employeeNumber
+    });
 
       if (stopBtn) stopBtn.disabled = false;
       if (holdBtn) holdBtn.disabled = false;
@@ -181,7 +193,7 @@ export async function startOrResumeRun() {
     startBtn.textContent = "Starting...";
     showScanStatus("Starting process...", "info");
 
-    const prevList = getAllPrevProcessNames(station, processName);
+    const prevList = getAllPrevProcessNames(processName);
     for (const p of prevList) {
       const ok = await hasCompletedProcess(serialNumber, p);
       if (!ok) {
@@ -223,7 +235,7 @@ export async function startOrResumeRun() {
       refrigerant: v.refrigerant || null
     };
 
-    const ref = await addDoc(collection(db, "processRuns"), payload);
+    const ref = await addDoc(runsCol(), payload);
     state.currentRunId = ref.id;
     saveState();
 
@@ -260,7 +272,7 @@ export async function completeRunAndReset(setStepFn, resetAllDataFn, hideOverlay
   showOverlayFn?.("Saving (Completed)...");
 
   try {
-    await updateDoc(doc(db, "processRuns", state.currentRunId), {
+      await updateDoc(runDoc(state.currentRunId), {
       status: "completed",
       endAt: serverTimestamp(),
       endEpochMs: Date.now(),
@@ -293,7 +305,7 @@ export async function holdRunAndReset(reason, remarks, setStepFn, resetAllDataFn
   showOverlayFn?.("Saving (On Hold)...");
 
   try {
-    await updateDoc(doc(db, "processRuns", state.currentRunId), {
+    await updateDoc(runDoc(state.currentRunId), {
       status: "on_hold",
       holdAt: serverTimestamp(),
       holdEpochMs: Date.now(),

@@ -1,4 +1,6 @@
-import { state, PROCESS_BY_VESSEL, getVesselTypeKey, formatMs, getElapsedMs, saveState } from "./state.js";
+/* Update the UI */
+
+import { state, PROCESS_BY_PV, PROCESS_BY_CHILLER,  getVesselTypeKey, formatMs, getElapsedMs, saveState } from "./state.js";
 
 export const el = (id) => document.getElementById(id);
 
@@ -61,28 +63,29 @@ export function updateStepper(step) {
   if (fill) fill.style.width = (idx === 1 ? 0 : idx === 2 ? 50 : 100) + "%";
 }
 
-export function loadProcessesForVessel(vesselData = state.vesselData) {
+export function loadProcessesForCurrentUnit() {
   const sel = el("processSelect");
   if (!sel) return;
 
   sel.innerHTML = "";
 
-  console.log("vesselData:", vesselData);
-  console.log("vesselKey:", getVesselTypeKey(vesselData));
-  console.log("keys:", Object.keys(PROCESS_BY_VESSEL));
+  const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
 
-  // placeholder
+  let list = [];
+  if (kind === "PV") {
+    const vesselKey = getVesselTypeKey(state.vesselData?.vesselType);
+    list = PROCESS_BY_PV[vesselKey] || [];
+  } else if (kind === "CHILLER") {
+    const coolKey = getVesselTypeKey(state.vesselData?.coolingType);
+    list = PROCESS_BY_CHILLER[coolKey] || [];
+  }
+
+  // placeholder (disabled; not a real selection)
   const ph = document.createElement("option");
   ph.value = "";
-  ph.textContent = "Select process...";
+  ph.textContent = list.length ? "Select process..." : "No process list for this unit";
   ph.disabled = true;
-
-  // Only select placeholder if there is NO valid saved process
-  const saved = state.selectedProcessName;
-  const vesselKey = getVesselTypeKey(vesselData);
-  const list = PROCESS_BY_VESSEL[vesselKey] || [];
-
-  ph.selected = !(saved && list.includes(saved));
+  ph.selected = true;
   sel.appendChild(ph);
 
   list.forEach(p => {
@@ -92,15 +95,14 @@ export function loadProcessesForVessel(vesselData = state.vesselData) {
     sel.appendChild(opt);
   });
 
-  if (saved && list.includes(saved)) {
-    sel.value = saved;
+  // restore if still valid
+  if (state.selectedProcessName && list.includes(state.selectedProcessName)) {
+    sel.value = state.selectedProcessName;
   } else {
-    // keep placeholder showing
     sel.value = "";
     state.selectedProcessName = null;
     saveState();
   }
-
 }
 
 export function renderStopwatch() {
@@ -134,7 +136,12 @@ export function syncStatusButtons() {
   const procSel = el("processSelect");
   if (!startBtn || !stopBtn || !holdBtn) return;
 
-  const startDisabled = state.runRunning || state.startInFlight || state.startLockedByStatus;
+  const noProcessSelected = !procSel?.value;
+  const startDisabled =
+    state.runRunning ||
+    state.startInFlight ||
+    state.startLockedByStatus ||
+    noProcessSelected;
 
   startBtn.disabled = startDisabled;
   stopBtn.disabled = !state.runRunning;

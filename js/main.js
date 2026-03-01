@@ -1,5 +1,3 @@
-/* Thank you to DRM-SA PE Team (Najmi, Muaz, JJ, Syu) and our boss Henry for ideas during brainstorm session */
-
 /* Main heart of the program */
 
 import { state, loadState, saveState } from "./state.js";
@@ -8,7 +6,7 @@ import {
   hideScanStatus,
   showScanStatus,
   updateStepper,
-  loadProcessesForVessel,
+  loadProcessesForCurrentUnit,
   renderStopwatch,
   syncStatusButtons,
   openHoldModal,
@@ -52,7 +50,7 @@ async function setStep(step) {
 
   if (inStatus) {
     if (state.vesselData) {
-      loadProcessesForVessel(state.vesselData);
+      loadProcessesForCurrentUnit();
     }
 
     //  restore selection BEFORE any DB checks
@@ -122,7 +120,7 @@ function restoreUIFromState() {
     el("empNo").innerText = state.employeeData.employeeNumber || "-";
     el("empStation").innerText = state.employeeData.station || "-";
     if (state.vesselData) {
-      loadProcessesForVessel(state.vesselData);
+      loadProcessesForCurrentUnit();;
     }
   }
 
@@ -183,7 +181,7 @@ el("to-status")?.addEventListener("click", () => {
   }
 
   //  pre-load processes before switching screen
-  loadProcessesForVessel(state.vesselData);
+  loadProcessesForCurrentUnit();;
 
   setStep("status");
 });

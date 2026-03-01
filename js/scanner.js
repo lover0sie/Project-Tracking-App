@@ -1,7 +1,46 @@
-import { state, saveState, shouldIgnoreDuplicate, getVesselTypeFromPvSerial } from "./state.js";
-import { el, setText, showScanStatus, loadProcessesForVessel } from "./ui.js";
+import { state, saveState, shouldIgnoreDuplicate } from "./state.js";
+import { el, setText, showScanStatus, loadProcessesForCurrentUnit } from "./ui.js";
 
 /* Html5Qrcode is global */
+
+function parseChillerQR(text) {
+  const p = text.split(";").map(s => s.trim());
+  if (p.length !== 8) return null;
+
+  const [version, projectName, description, materialNumber, chillerSerialNumber, model, coolingType, refrigerant] = p;
+
+  return {
+    qrKind: "CHILLER",
+    version, 
+    projectName, 
+    description, 
+    materialNumber,
+    chillerSerialNumber, 
+    model, 
+    coolingType, 
+    refrigerant
+  };
+}
+
+function parsePvQR(text) {
+  const p = text.split(";").map(s => s.trim());
+  if (p.length !== 9) return null;
+
+  const [version, projectName, partNumber, materialNumber, chillerSerialNumber, pvSerialNumber, vesselType, model, refrigerant] = p;
+
+  return {
+    qrKind: "PV",
+    version, 
+    projectName, 
+    partNumber, 
+    materialNumber,
+    chillerSerialNumber,
+    pvSerialNumber,
+    vesselType, 
+    model, 
+    refrigerant
+  };
+}
 
 export function updateScanButtonUI() {
   const btn = el("start-scan");
@@ -83,7 +122,9 @@ export async function stopScanner() {
   }
 }
 
+
 export async function onScanSuccess(decodedText, setStepFn) {
+  console.log("scan success, currentStep:", state.currentStep);
   const text = decodedText.trim();
 
   if (shouldIgnoreDuplicate(text)) return;
@@ -126,8 +167,6 @@ export async function onScanSuccess(decodedText, setStepFn) {
     const mp = el("manpowerInput");
     if (mp) mp.value = "";
 
-    loadProcessesForVessel(state.vesselData);
-
     saveState();
 
     showScanStatus("Employee QR code successfully scanned.", "ok");
@@ -135,82 +174,59 @@ export async function onScanSuccess(decodedText, setStepFn) {
     return;
   }
 
-  // PROJECT QR
-  const parts = text.split(";").map(s => s.trim());
+    // PROJECT QR
+  const pv = parsePvQR(text);
+  const ch = parseChillerQR(text);
 
-  // PV QR (9 fields)
-  if (parts.length === 9) {
-    const [
-      version,
-      projectName,
-      partNumber,
-      materialNumber,
-      chillerSerialNumber,
-      pvSerialNumber,
-      typeText,
-      model,
-      refrigerant
-    ] = parts;
-
-    const derived = getVesselTypeFromPvSerial(pvSerialNumber);
-    const vesselType = (typeText || "").trim() || derived;
-
+  // ---- PV QR (REQUIRED) ----
+  if (pv) {
+    // enforce: must scan PV to work (your requirement)
+    state.chillerSerialNumber = pv.chillerSerialNumber;
     state.vesselData = {
-      qrKind: "PV",
-      version,
-      projectName,
-      partNumber,
-      partDescription: partNumber, // keep if you want (optional)
-      materialNumber,
-      chillerSerialNumber,
-      pvSerialNumber,
-      vesselType,
-      model,
-      refrigerant,
-
-      serialNumber: pvSerialNumber,
-      description: partNumber
+      ...pv,
+      // unify some UI fields your app already uses
+      serialNumber: pv.pvSerialNumber,  // what you show in UI
+      description: pv.partNumber        // what you show as description
     };
+    state.activeScope = "PV";
 
+    setText("projectName", pv.projectName);
+    setText("description", pv.partNumber);
+    setText("materialNumber", pv.materialNumber);
+    setText("serialNumber", pv.pvSerialNumber);
+    setText("type", pv.vesselType);
+
+    // update process dropdown now that we know vesselType
+    loadProcessesForCurrentUnit();
+
+    
     showScanStatus("PV QR code successfully scanned.", "ok");
-    await stopScanner();
+    state.currentStep = "project";
     saveState();
-
-    setText("projectName", projectName);
-    setText("description", partNumber);
-    setText("materialNumber", materialNumber);
-    setText("serialNumber", pvSerialNumber);
-    setText("type", vesselType);
-
+    await stopScanner();
     return;
   }
 
-  // CHILLER QR (8 fields)
-  if (parts.length === 8) {
-    const [version, projectName, description, materialNumber, serialNumber, model, type, refrigerant] = parts;
+  // ---- CHILLER QR (optional: allow view only OR block) ----
+  if (ch) {
 
-    state.vesselData = {
-      qrKind: "CHILLER",
-      version,
-      projectName,
-      description,
-      materialNumber,
-      serialNumber,
-      model,
-      type,
-      refrigerant
-    };
+    // Otherwise: allow storing chiller info but keep scope CHILLER
+    state.chillerSerialNumber = ch.chillerSerialNumber;
+    state.vesselData = { ...ch, serialNumber: ch.chillerSerialNumber };
+    state.activeScope = "CHILLER";
+
+    setText("projectName", ch.projectName);
+    setText("description", ch.description);
+    setText("materialNumber", ch.materialNumber);
+    setText("serialNumber", ch.chillerSerialNumber);
+    setText("type", ch.coolingType);
+
+    loadProcessesForCurrentUnit();
 
     showScanStatus("Chiller QR code successfully scanned.", "ok");
-    await stopScanner();
+    state.currentStep = "project";
     saveState();
-
-    setText("projectName", projectName);
-    setText("description", description);
-    setText("materialNumber", materialNumber);
-    setText("serialNumber", serialNumber);
-    setText("type", type);
-
+    await stopScanner();
     return;
   }
 

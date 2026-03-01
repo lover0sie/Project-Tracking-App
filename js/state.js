@@ -1,3 +1,5 @@
+/* State model */
+
 export const STATE_KEY = "qrAppState_v1";
 
 export const state = {
@@ -5,8 +7,14 @@ export const state = {
   html5Qr: null,
   scanning: false,
 
-  vesselData: null,
   employeeData: null,
+
+   // NEW / clarified:
+  chillerSerialNumber: null,     // e.g. K26C088 (parent key)
+  vesselData: null,              // the currently scanned "project QR" (PV or CHILLER)
+  activeScope: null,             // "PV" | "CHILLER" (based on last scanned project QR)
+
+  selectedProcessName: null,
 
   // Process run state
   currentRunId: null,
@@ -35,35 +43,8 @@ export const state = {
   startInFlight: false
 };
 
-// Station -> processes
-export const PROCESS_BY_STATION = {
-  "PV 1": [
-    "6 - Hole bevelling",
-    "7 - Connector welding",
-    "8 - Fitting internal plate and GMAW C&B",
-    "9 - Fitting and welding distribution box",
-    "10 - Tube support and bush fitting, tube sheet fitting",
-    "11 - Tubesheet welding",
-    "12 - Bracket and attachment welding",
-    "13 - Unit side plate and base welding",
-    "14 - Tube slotting and expansion"
-  ],
-
-  "PV 2": [
-    "6 - Hole bevelling",
-    "7 - Connector welding",
-    "8 - Fitting internal plate and GMAW C&B",
-    "9 - Fitting and welding distribution box",
-    "10 - Tube support and bush fitting, tube sheet fitting",
-    "11 - Tubesheet welding",
-    "12 - Bracket and attachment welding",
-    "13 - Unit side plate and base welding",
-    "14 - Tube slotting and expansion"
-  ]
-};
-
 // Vessel -> processes
-export const PROCESS_BY_VESSEL = {
+export const PROCESS_BY_PV = {
   "EVAPORATOR": [
     "6, 7, 8 - Hole bevelling, connector welding, fitting internal plate and GMAW C&B",
     "9, 10, 11 - Distribution box, tube support and bush, tubesheet fitting and welding",
@@ -105,25 +86,48 @@ export const PROCESS_BY_VESSEL = {
   ]
 }
 
+// CHILLER -> processes
+export const PROCESS_BY_CHILLER = {
+  "AIR-COOLED": [
+    "Piping shop",
+    "Steel pipe cutting"
+  ],
+  "WATER-COOLED": [
+    "Piping shop",
+    "Steel pipe cutting"
+  ]
+};
 
-// clean up vessel type
-export function getVesselTypeKey(vesselData) {
+export function getVesselTypeKey(v) {
   const raw =
-    (typeof vesselData === "string"
-      ? vesselData
-      : (vesselData?.vesselType || vesselData?.type || "")
-    );
+    (typeof v === "string")
+      ? v
+      : (v?.vesselType || v?.type || "");
 
-  return raw.trim().toUpperCase();
+  return raw
+    .trim()
+    .toUpperCase()
+    .replaceAll("_", " ");
 }
+
 export function getVesselTypeFromPvSerial(pvSerial = "") {
   const suffix = pvSerial.trim().slice(-1).toUpperCase();
   const map = { E: "EVAPORATOR", C: "CONDENSER", J: "ECONOMIZER", Y: "OIL SEPARATOR" };
   return map[suffix] || "UNKNOWN";
 }
 
-export function getAllPrevProcessNames(station, currentProcessName) {
-  const list = PROCESS_BY_STATION[station] || [];
+export function getAllPrevProcessNames(currentProcessName) {
+  const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
+
+  let list = [];
+  if (kind === "PV") {
+    const vesselKey = getVesselTypeKey(state.vesselData?.vesselType);
+    list = PROCESS_BY_PV[vesselKey] || [];
+  } else if (kind === "CHILLER") {
+    const coolKey = getVesselTypeKey(state.vesselData?.coolingType);
+    list = PROCESS_BY_CHILLER[coolKey] || [];
+  }
+
   const idx = list.indexOf(currentProcessName);
   if (idx <= 0) return [];
   return list.slice(0, idx);
@@ -198,7 +202,9 @@ export function saveState() {
     resumeLocked: state.resumeLocked,
     resumeRunStatus: state.resumeRunStatus,
     resumeProcessName: state.resumeProcessName,
-    selectedProcessName: state.selectedProcessName
+    selectedProcessName: state.selectedProcessName,
+    chillerSerialNumber: state.chillerSerialNumber,
+    activeScope: state.activeScope,
   };
 
   // user session storage instead of localstorage
@@ -226,6 +232,9 @@ export function loadState() {
     state.resumeProcessName = s.resumeProcessName || null;
     
     state.selectedProcessName = s.selectedProcessName || null;
+
+    state.chillerSerialNumber = s.chillerSerialNumber || null;
+    state.activeScope = s.activeScope || null;
   } catch (e) {
     console.error("State load failed", e);
     sessionStorage.removeItem(STATE_KEY);
