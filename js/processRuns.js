@@ -28,12 +28,13 @@ import {
   stopStopwatch
 } from "./ui.js";
 
+
 function runsCol() {
   if (!state.chillerSerialNumber) throw new Error("Missing state.chillerSerialNumber");
   return collection(db, "processRuns", state.chillerSerialNumber, "runs");
 }
 
-function runDoc(runId) {
+export function runDoc(runId) {
   if (!state.chillerSerialNumber) throw new Error("Missing state.chillerSerialNumber");
   return doc(db, "processRuns", state.chillerSerialNumber, "runs", runId);
 }
@@ -85,7 +86,14 @@ export function applyResumeRunToUI(runDoc) {
 
   state.runRunning = false;
   state.runStartEpoch = 0;
-  state.runAccumMs = Number(runDoc.durationMs || 0);
+
+  const fromDocDuration = Number(runDoc.durationMs || 0);
+  const fromTimestamps =
+    (runDoc.startEpochMs && runDoc.holdEpochMs)
+      ? (runDoc.holdEpochMs - runDoc.startEpochMs)
+      : 0;
+
+  state.runAccumMs = fromDocDuration || fromTimestamps || 0;
 
   state.resumeLocked = true;
   state.resumeRunStatus = "on_hold";
@@ -138,8 +146,22 @@ export async function startOrResumeRun() {
     // 1) Block if already running
     const active = await findActiveRun(serialNumber, station, processName);
     if (active) {
-      showScanStatus("This process is already running.", "err");
-      state.startLockedByStatus = true;
+      // hard stop local timer/state
+      state.runRunning = false;
+      state.runStartEpoch = 0;
+      if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
+
+      state.currentRunId = active.id;
+      state.resumeLocked = false;
+      state.startLockedByStatus = true; // blocks Start button
+
+      const whoName = active.resumedByName || active.startedByName || "Unknown";
+      const whoNo   = active.resumedByNumber || active.startedByNumber || "-";
+      const verb    = active.resumedByName ? "Resumed by" : "Started by";
+
+      showScanStatus(`Already RUNNING. ${verb}: ${whoName} (${whoNo}).`, "err");
+      renderStopwatch(); // shows whatever local state has (usually 00:00:00)
+      saveState();
       syncStatusButtons();
       return;
     }
@@ -148,6 +170,9 @@ export async function startOrResumeRun() {
     if (state.resumeRunStatus === "on_hold" && state.currentRunId) {
       startBtn.textContent = "Starting...";
       showScanStatus("Resuming process...", "info");
+      
+      // arm auto-hold for this resumed run
+      state.autoHoldSent = false;
 
       if (state.resumeProcessName && processSel.value !== state.resumeProcessName) {
         processSel.value = state.resumeProcessName;
@@ -189,22 +214,12 @@ export async function startOrResumeRun() {
       return;
     }
 
-    // 5) Prerequisite check (previous processes must be completed)
-    startBtn.textContent = "Starting...";
-    showScanStatus("Starting process...", "info");
-
-    const prevList = getAllPrevProcessNames(processName);
-    for (const p of prevList) {
-      const ok = await hasCompletedProcess(serialNumber, p);
-      if (!ok) {
-        showScanStatus(`Cannot start. Please complete: ${p} first.`, "err");
-        return;
-      }
-    }
-
     // 6) New run
     processSel.disabled = true;
     state.resumeLocked = false;
+
+    // arm auto-hold for this new run
+    state.autoHoldSent = false;
 
     const v = state.vesselData;
 
@@ -235,9 +250,9 @@ export async function startOrResumeRun() {
       refrigerant: v.refrigerant || null
     };
 
+
     const ref = await addDoc(runsCol(), payload);
     state.currentRunId = ref.id;
-    saveState();
 
     if (stopBtn) stopBtn.disabled = false;
     if (holdBtn) holdBtn.disabled = false;
@@ -245,6 +260,8 @@ export async function startOrResumeRun() {
     state.runAccumMs = 0;
     startStopwatch();
     showScanStatus("Process is running.", "ok");
+
+    saveState();
 
   } catch (err) {
     console.error(err);

@@ -112,7 +112,19 @@ export function renderStopwatch() {
 }
 
 export function startStopwatch() {
-  if (state.runRunning) return;
+  // If already running but interval missing (refresh/back from background), restore it
+  if (state.runRunning) {
+    if (!state.runTimer) {
+      if (!state.runStartEpoch || state.runStartEpoch <= 0) {
+        state.runStartEpoch = Date.now(); // recover
+      }
+      state.runTimer = setInterval(renderStopwatch, 200);
+      renderStopwatch();
+      saveState();
+    }
+    return;
+  }
+
   state.runRunning = true;
   state.runStartEpoch = Date.now();
   state.runTimer = setInterval(renderStopwatch, 200);
@@ -122,11 +134,22 @@ export function startStopwatch() {
 
 export function stopStopwatch() {
   if (!state.runRunning) return;
-  state.runAccumMs += Date.now() - state.runStartEpoch;
+
+  // Guard: only accumulate if start epoch is valid
+  if (state.runStartEpoch && state.runStartEpoch > 0) {
+    state.runAccumMs += Date.now() - state.runStartEpoch;
+  }
+
   state.runRunning = false;
-  clearInterval(state.runTimer);
-  state.runTimer = null;
+  state.runStartEpoch = 0;
+
+  if (state.runTimer) {
+    clearInterval(state.runTimer);
+    state.runTimer = null;
+  }
+
   renderStopwatch();
+  saveState();
 }
 
 export function syncStatusButtons() {

@@ -188,6 +188,27 @@ export function getElapsedMs() {
   return state.runAccumMs + (Date.now() - state.runStartEpoch);
 }
 
+function elapsedFromRun(run) {
+  const start = run.startEpochMs;
+  const hold  = run.holdEpochMs;
+
+  // If you later add run.accumulatedMs, include it too:
+  const accumulated = run.accumulatedMs || 0;
+
+  if (run.status === "on_hold") {
+    if (!hold || !start) return accumulated;
+    return accumulated + (hold - start);
+  }
+
+  if (run.status === "running") {
+    const resumed = run.resumedEpochMs || start;
+    if (!resumed) return accumulated;
+    return accumulated + (Date.now() - resumed);
+  }
+
+  return accumulated;
+}
+
 export function saveState() {
   if (!state.stateEnabled) return;
 
@@ -223,18 +244,25 @@ export function loadState() {
     state.vesselData = s.vesselData || null;
 
     state.currentRunId = s.currentRunId || null;
+
+    state.runAccumMs = Number(s.runAccumMs || 0);
     state.runRunning = !!s.runRunning;
-    state.runStartEpoch = s.runStartEpoch || 0;
-    state.runAccumMs = s.runAccumMs || 0;
+    state.runStartEpoch = Number(s.runStartEpoch || 0);
+
+    // Repair corrupted running state (prevents 492394:40:08 bug)
+    if (state.runRunning && state.runStartEpoch <= 0) {
+      state.runRunning = false;
+      state.runStartEpoch = 0;
+    }
 
     state.resumeLocked = !!s.resumeLocked;
     state.resumeRunStatus = s.resumeRunStatus || null;
     state.resumeProcessName = s.resumeProcessName || null;
-    
-    state.selectedProcessName = s.selectedProcessName || null;
 
+    state.selectedProcessName = s.selectedProcessName || null;
     state.chillerSerialNumber = s.chillerSerialNumber || null;
     state.activeScope = s.activeScope || null;
+
   } catch (e) {
     console.error("State load failed", e);
     sessionStorage.removeItem(STATE_KEY);

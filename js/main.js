@@ -1,6 +1,9 @@
 /* Main heart of the program */
 
-import { state, loadState, saveState } from "./state.js";
+import { doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { db } from "./firebase.js"; // adjust if your path differs
+
+import { state, loadState, saveState, getElapsedMs } from "./state.js";
 import {
   el,
   hideScanStatus,
@@ -13,7 +16,9 @@ import {
   closeHoldModal,
   resetAllData,
   showSaveOverlay,
-  hideSaveOverlay
+  hideSaveOverlay,
+  startStopwatch,
+  stopStopwatch
 } from "./ui.js";
 
 import { startScanner, stopScanner, updateScanButtonUI, onScanSuccess } from "./scanner.js";
@@ -24,8 +29,76 @@ import {
   hasCompletedProcess,
   startOrResumeRun,
   completeRunAndReset,
-  holdRunAndReset
+  holdRunAndReset,
+  runDoc,
+  findActiveRun
 } from "./processRuns.js";
+
+async function autoResumeAfterReload() {
+  const pending = sessionStorage.getItem("pendingReload");
+  if (!pending) return;
+
+  // Clear flag ASAP so it doesn't auto-resume forever
+  sessionStorage.removeItem("pendingReload");
+
+  if (!state.employeeData || !state.vesselData) return;
+
+  const procSel = el("processSelect");
+  const processName = procSel?.value;
+  if (!processName) return;
+
+  const serialNumber = state.vesselData.serialNumber;
+  const station = state.employeeData.station;
+
+  try {
+    // 1) If it's already running in DB, do nothing
+    const active = await findActiveRun(serialNumber, station, processName);
+    if (active) return;
+
+    // 2) If it's on_hold, auto-resume
+    const onHold = await findOnHoldRun(serialNumber, station, processName);
+    if (!onHold) return;
+
+    // Only auto-resume if same employee
+    const lastEmp = onHold.resumedByNumber || onHold.startedByNumber;
+    if (lastEmp && lastEmp !== state.employeeData.employeeNumber) {
+      // show classic UI instead of silent return
+      applyResumeRunToUI(onHold);
+      return;
+    }
+
+    // Only auto-resume if browser_closed
+    if (onHold.holdReason && onHold.holdReason !== "browser_closed") {
+      applyResumeRunToUI(onHold);
+      return;
+    }
+
+    // Show classic message + load time
+    applyResumeRunToUI(onHold);
+
+    // (optional) small info message so user knows it's going to resume
+    showScanStatus("Auto-resuming after refresh...", "info");
+
+    // Update Firestore to running
+    await updateDoc(runDoc(onHold.id), {
+      status: "running",
+      resumedAt: serverTimestamp(),
+      resumedEpochMs: Date.now(),
+      resumedByName: state.employeeData.employeeName,
+      resumedByNumber: state.employeeData.employeeNumber
+    });
+
+    // Start stopwatch immediately
+    state.autoHoldSent = false;
+    startStopwatch();
+
+    showScanStatus("Auto-resumed after refresh.", "ok");
+    syncStatusButtons();
+    saveState();
+  } catch (e) {
+    console.warn("autoResumeAfterReload failed:", e);
+  }
+}
 
 async function setStep(step) {
   hideScanStatus();
@@ -143,11 +216,56 @@ function restoreUIFromState() {
   syncStatusButtons();
 }
 
+window.addEventListener("DOMContentLoaded", async () => {
+  loadState();
+  restoreUIFromState();
+  syncStatusButtons();
+
+  await stopScanner();
+  updateScanButtonUI();
+
+  // If we are already in status, processes exist, so try auto-resume
+  if (state.currentStep === "status") {
+    await autoResumeAfterReload();
+  }
+});
+
 /* ===== Event listeners ===== */
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) renderStopwatch();
+  if (document.visibilityState === "visible") {
+    if (state.runRunning && !state.runTimer) {
+      state.runTimer = setInterval(renderStopwatch, 200);
+    }
+    renderStopwatch();
+    syncStatusButtons();
+  } else {
+    if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
+  }
 });
+
+
+async function autoHoldActiveRun(reason = "browser_closed") {
+  if (state.autoHoldSent) return;
+  if (!state.currentRunId) return;
+  if (!state.runRunning) return;
+
+  state.autoHoldSent = true;
+
+  try {
+    await updateDoc(runDoc(state.currentRunId), {
+      status: "on_hold",
+      holdReason: reason,
+      holdAt: serverTimestamp(),
+      holdEpochMs: Date.now(),
+      durationMs: getElapsedMs(),
+      remarks: "-"
+    });
+  } catch (e) {
+    console.warn("Auto-hold failed:", e);
+  }
+}
+
 
 el("to-project")?.addEventListener("click", async () => {
   if (!state.employeeData) {
@@ -279,6 +397,42 @@ el("processSelect")?.addEventListener("change", async () => {
   const processName = el("processSelect").value;
 
   try {
+    // 0) running (block)
+    const active = await findActiveRun(serialNumber, station, processName);
+    if (active) {
+      // hard reset local timer so it never shows running here
+      state.runRunning = false;
+      state.runStartEpoch = 0;
+      state.runAccumMs = 0;
+      if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
+
+      state.currentRunId = active.id;
+
+      // lock Start (cannot start another timer)
+      state.startLockedByStatus = true;
+      state.resumeLocked = false; // allow choosing other process
+      state.resumeRunStatus = "running";
+
+      // choose “resumed” info if available, otherwise “started”
+      const whoName =
+        active.resumedByName || active.startedByName || "Unknown";
+      const whoNo =
+        active.resumedByNumber || active.startedByNumber || "-";
+
+      const verb = active.resumedByName ? "Resumed by" : "Started by";
+
+      showScanStatus(
+        `This process is already RUNNING. ${verb}: ${whoName} (${whoNo}).`,
+        "err"
+      );
+
+      renderStopwatch(); // will show 00:00:00 (intentionally)
+      saveState();
+      syncStatusButtons();
+      return;
+    }
+
+
     // 1) on_hold
     const onHold = await findOnHoldRun(serialNumber, station, processName);
     if (onHold) {
@@ -309,11 +463,26 @@ el("processSelect")?.addEventListener("change", async () => {
   }
 });
 
+function requestAutoHold(reason = "browser_closed") {
+  autoHoldActiveRun(reason); // best-effort
+}
+
 window.addEventListener("beforeunload", (e) => {
   if (state.runRunning) {
+    // Mark that this tab is reloading/navigating (sessionStorage survives refresh)
+    sessionStorage.setItem("pendingReload", "1");
+
+    // Best-effort hold (may or may not reach Firestore)
+    requestAutoHold("browser_closed");
+
     e.preventDefault();
     e.returnValue = "";
   }
+});
+
+// pagehide fires on tab close + navigation + iOS Safari cases
+window.addEventListener("pagehide", () => {
+  requestAutoHold("browser_closed");
 });
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -325,4 +494,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   await stopScanner();
   updateScanButtonUI();
 });
+
+window.addEventListener("pageshow", () => {
+  // When page is shown again (Safari BFCache), restore timer tick if needed
+  if (state.runRunning && !state.runTimer) {
+    state.runTimer = setInterval(renderStopwatch, 200);
+  }
+  renderStopwatch();
+  syncStatusButtons();
+});
+
 
