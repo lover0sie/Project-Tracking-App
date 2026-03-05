@@ -116,6 +116,36 @@ export function applyResumeRunToUI(runDoc) {
   syncStatusButtons();
 }
 
+function reconnectToRunning(active) {
+  // Who owns the running process?
+  const lastEmp = String(active.resumedByNumber || active.startedByNumber || "").trim();
+  const me = String(state.employeeData.employeeNumber || "").trim();
+
+  // If not same operator -> do not reconnect
+  if (lastEmp && lastEmp !== me) return false;
+
+  state.currentRunId = active.id;
+
+  // Compute elapsed NOW from Firestore timestamps:
+  // base durationMs may be 0 if you only write it on hold/complete (that's OK)
+  const base = Number(active.durationMs || 0);
+  const startPoint = Number(active.resumedEpochMs || active.startEpochMs || 0);
+  const elapsedNow = startPoint ? base + (Date.now() - startPoint) : base;
+
+  // Set local state so UI continues from elapsedNow
+  state.runAccumMs = elapsedNow;
+  state.runStartEpoch = Date.now();   // from now onward
+  state.runRunning = false;           // so startStopwatch() will start cleanly
+  state.autoHoldSent = false;
+
+  startStopwatch(); // starts ticking
+  saveState();
+  syncStatusButtons();
+
+  showScanStatus("Reconnected to your running process.", "ok");
+  return true;
+}
+
 export async function startOrResumeRun() {
   if (!state.chillerSerialNumber) {
     return showScanStatus("Missing chiller serial number. Scan PV/Chiller QR again.", "err");
@@ -146,21 +176,51 @@ export async function startOrResumeRun() {
     // 1) Block if already running
     const active = await findActiveRun(serialNumber, station, processName);
     if (active) {
-      // hard stop local timer/state
-      state.runRunning = false;
-      state.runStartEpoch = 0;
-      if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
 
-      state.currentRunId = active.id;
-      state.resumeLocked = false;
-      state.startLockedByStatus = true; // blocks Start button
+      console.log("active.startedByNumber=", active.startedByNumber, typeof active.startedByNumber);
+      console.log("my employeeNumber=", state.employeeData.employeeNumber, typeof state.employeeData.employeeNumber);
+      console.log("trim compare=", String(active.startedByNumber).trim(), "vs", String(state.employeeData.employeeNumber).trim());
 
-      const whoName = active.resumedByName || active.startedByName || "Unknown";
-      const whoNo   = active.resumedByNumber || active.startedByNumber || "-";
-      const verb    = active.resumedByName ? "Resumed by" : "Started by";
+      const lastEmp = String(active.resumedByNumber || active.startedByNumber || "").trim();
+      const me = String(state.employeeData.employeeNumber || "").trim();
 
-      showScanStatus(`Already RUNNING. ${verb}: ${whoName} (${whoNo}).`, "err");
-      renderStopwatch(); // shows whatever local state has (usually 00:00:00)
+      //  If running by YOU -> reconnect stopwatch
+      if (lastEmp && lastEmp === me) {
+
+        state.currentRunId = active.id;
+
+        const base = Number(active.durationMs || 0);
+        const startPoint = Number(active.resumedEpochMs || active.startEpochMs || 0);
+        const elapsedNow = startPoint ? base + (Date.now() - startPoint) : base;
+
+        state.runAccumMs = elapsedNow;
+        state.runStartEpoch = Date.now();
+        state.runRunning = false;
+
+        startStopwatch();
+
+        showScanStatus("Reconnected to your running process.", "ok");
+        syncStatusButtons();
+        saveState();
+        return;
+      }
+
+      //  Running by someone else -> block
+      const whoName =
+        active.resumedByName || active.startedByName || "Unknown";
+      const whoNo =
+        active.resumedByNumber || active.startedByNumber || "-";
+
+      const verb = active.resumedByName ? "Resumed by" : "Started by";
+
+      state.startLockedByStatus = true;
+
+      showScanStatus(
+        `This process is already RUNNING. ${verb}: ${whoName} (${whoNo}).`,
+        "err"
+      );
+
+      renderStopwatch();
       saveState();
       syncStatusButtons();
       return;
@@ -345,3 +405,4 @@ export async function holdRunAndReset(reason, remarks, setStepFn, resetAllDataFn
     showScanStatus("Failed to save On Hold. Try again.", "err");
   }
 }
+

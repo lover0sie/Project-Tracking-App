@@ -156,7 +156,11 @@ export async function onScanSuccess(decodedText, setStepFn) {
       return;
     }
 
-    const [, employeeNumber, employeeName, station] = parts;
+    const [, employeeNumberRaw, employeeNameRaw, stationRaw] = parts;
+
+    const employeeNumber = (employeeNumberRaw || "").trim();
+    const employeeName   = (employeeNameRaw   || "").trim();
+    const station        = (stationRaw        || "").trim();
 
     state.employeeData = { employeeNumber, employeeName, station, manpower: null };
 
