@@ -110,6 +110,7 @@
         
     </section>
 
+  <!-- On Hold Complete Modal -->
   <div id="holdModal" class="modal hidden">
   <div class="modal-card">
     <h3>Put Process On Hold</h3>
@@ -135,6 +136,22 @@
     <div class="modal-actions">
       <button id="holdCancel" class="secondary">Cancel</button>
       <button id="holdSave" class="btnWarn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Complete Modal -->
+<div id="completeModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>Complete Process</h3>
+
+    <p id="completeText" style="margin:8px 0 12px; color: var(--muted);">
+      Are you sure this process is complete?
+    </p>
+
+    <div class="modal-actions">
+      <button id="completeCancel" class="btnDanger">No</button>
+      <button id="completeConfirm" class="secondary">Yes</button>
     </div>
   </div>
 </div>

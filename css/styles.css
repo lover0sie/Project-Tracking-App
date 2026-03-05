@@ -292,7 +292,7 @@ button.secondary:hover, #clear-data:hover{
 }
 
 
-/* Row container */
+/* Buttons */
 .btnRow {
   display: flex;
   gap: 12px;
@@ -303,6 +303,23 @@ button.secondary:hover, #clear-data:hover{
 /* Stop + Hold share equally */
 .btnRow button {
   flex: 1;            /* split 50% 50% */
+}
+
+/* Danger (Complete) button */
+.btnDanger{
+  background:#dc2626;
+  border:1px solid rgba(220,38,38,.35);
+  color:#fff;
+  font-weight:800;
+  border-radius:12px;
+}
+
+.btnDanger:hover{
+  filter:brightness(.95);
+}
+
+.btnDanger:active{
+  transform: translateY(1px);
 }
 
 /* Keep buttons same width and centered */

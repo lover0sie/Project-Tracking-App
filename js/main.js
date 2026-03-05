@@ -34,6 +34,25 @@ import {
   findActiveRun
 } from "./processRuns.js";
 
+function openCompleteModal() {
+  const processName =
+    el("processSelect")?.value || state.selectedProcessName || "";
+
+  const text = el("completeText");
+  if (text) {
+    text.textContent = processName
+      ? `Are you sure "${processName}" is complete? This action cannot be undone.`
+      : `Are you sure this process is complete? This action cannot be undone.`;
+  }
+
+  el("completeModal")?.classList.remove("hidden");
+  setTimeout(() => el("completeConfirm")?.focus(), 0);
+}
+
+function closeCompleteModal() {
+  el("completeModal")?.classList.add("hidden");
+}
+
 async function autoResumeAfterReload() {
   const pending = sessionStorage.getItem("pendingReload");
   if (!pending) return;
@@ -314,8 +333,10 @@ el("start-scan")?.addEventListener("click", async () => {
 
 el("btnStartProcess")?.addEventListener("click", startOrResumeRun);
 
-el("btnStopProcess")?.addEventListener("click", async () => {
-  await completeRunAndReset(setStep, resetAllData, hideSaveOverlay, showSaveOverlay);
+el("btnStopProcess")?.addEventListener("click", () => {
+  if (!state.currentRunId) return showScanStatus("No running process to complete.", "err");
+  if (!state.runRunning) return showScanStatus("Process is not running.", "err");
+  openCompleteModal();
 });
 
 el("btnHoldProcess")?.addEventListener("click", () => {
@@ -504,4 +525,12 @@ window.addEventListener("pageshow", () => {
   syncStatusButtons();
 });
 
+el("completeCancel")?.addEventListener("click", () => {
+  closeCompleteModal();
+});
+
+el("completeConfirm")?.addEventListener("click", async () => {
+  closeCompleteModal();
+  await completeRunAndReset(setStep, resetAllData, hideSaveOverlay, showSaveOverlay);
+});
 

@@ -46,25 +46,37 @@ export const state = {
 // Vessel -> processes
 export const PROCESS_BY_PV = {
   "EVAPORATOR": [
-    "6, 7, 8 - Hole bevelling, connector welding, fitting internal plate and GMAW C&B",
-    "9, 10, 11 - Distribution box, tube support and bush, tubesheet fitting and welding",
-    "12, 13 - Bracket, attachment, side plate, and base fitting and welding and copper tube brazing",
-    "14 - Tube slotting and expansion",
+    "6 - Hole bevelling",
+    "7 - Connector welding",
+    "8 - Fitting internal plate and GMAW C&B",
+    "9 - Fitting and welding distribution box",
+    "10 - Tube support, bush fitting, and tube sheet fitting",
+    "11 - Tubesheet welding",
+    "12 - Bracket and attachment welding, copper tube brazing",
+    "13 - Unit side plate and base welding",
+    "14A - Tube slotting",
+    "14B - Tube expansion",
     "15 - Primer painting",
     "16 - Pneumatic testing",
     "17 - Hydrostatic testing",
-    "18, 19 - Primer (weld seam) and top painting"
+    "18, 19 - Primer painting (weld seam) and top coat painting"
   ],
 
    "CONDENSER": [
-    "6, 7, 8 - Hole bevelling, connector welding, fitting internal plate and GMAW C&B",
-    "9, 10, 11 - Distribution box, tube support and bush, tubesheet fitting and welding",
-    "12, 13 - Bracket, attachment, side plate, and base fitting and welding and copper tube brazing",
-    "14 - Tube slotting and expansion",
+    "6 - Hole bevelling",
+    "7 - Connector welding",
+    "8 - Fitting internal plate and GMAW C&B",
+    "9 - Fitting and welding distribution box",
+    "10 - Tube support, bush fitting, and tube sheet fitting",
+    "11 - Tubesheet welding",
+    "12 - Bracket and attachment welding, copper tube brazing",
+    "13 - Unit side plate and base welding",
+    "14.1 - Tube slotting",
+    "14.2 - Tube expansion",
     "15 - Primer painting",
     "16 - Pneumatic testing",
     "17 - Hydrostatic testing",
-    "18, 19 - Primer (weld seam) and top coat painting"
+    "18, 19 - Primer painting (weld seam) and top coat painting"
   ],
 
   "OIL SEPARATOR":[
