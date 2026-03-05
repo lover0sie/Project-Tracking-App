@@ -135,12 +135,11 @@ export async function onScanSuccess(decodedText, setStepFn) {
 
   // enforce step order
   if (state.currentStep === "employee" && !isEmployee) {
-    showScanStatus("Wrong QR. Please scan EMPLOYEE QR.", "err");
+    showScanStatus("Wrong QR. Please scan EMPLOYEE QR.", "err", 2000);
     return;
   }
   if (state.currentStep === "project" && isEmployee) {
-    showScanStatus("Wrong QR. Please scan PROJECT QR.", "err");
-    setTimeout(() => showScanStatus("", "info"), 2000);
+    showScanStatus("Wrong QR. Please scan PROJECT QR.", "err", 2000);
     return;
   }
   if (state.currentStep === "status") {

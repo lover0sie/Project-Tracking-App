@@ -9,18 +9,38 @@ export function setText(id, value) {
   if (node) node.innerText = value ?? "-";
 }
 
-export function showScanStatus(msg, type = "info") {
+export function showScanStatus(msg, type = "info", autoHideMs = 0) {
   const box = el("scan-status");
   if (!box) return;
+
+  //  cancel any previous auto-clear
+  if (state.scanStatusTimeout) {
+    clearTimeout(state.scanStatusTimeout);
+    state.scanStatusTimeout = null;
+  }
 
   box.textContent = msg;
   box.classList.remove("hidden", "ok", "err", "info");
   box.classList.add(type);
+
+  if (autoHideMs > 0) {
+    state.scanStatusTimeout = setTimeout(() => {
+      hideScanStatus();
+      state.scanStatusTimeout = null;
+    }, autoHideMs);
+  }
 }
 
 export function hideScanStatus() {
   const box = el("scan-status");
   if (!box) return;
+
+  // cancel any pending auto-clear
+  if (state.scanStatusTimeout) {
+    clearTimeout(state.scanStatusTimeout);
+    state.scanStatusTimeout = null;
+  }
+
   box.classList.add("hidden");
   box.textContent = "";
   box.classList.remove("ok", "err", "info");

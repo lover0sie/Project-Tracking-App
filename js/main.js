@@ -418,36 +418,49 @@ el("processSelect")?.addEventListener("change", async () => {
   const processName = el("processSelect").value;
 
   try {
-    // 0) running (block)
+    // 0) running
     const active = await findActiveRun(serialNumber, station, processName);
     if (active) {
-      // hard reset local timer so it never shows running here
+      const lastEmp = String(active.resumedByNumber || active.startedByNumber || "").trim();
+      const me = String(state.employeeData.employeeNumber || "").trim();
+
+      //  running by YOU -> reconnect and show time
+      if (lastEmp && lastEmp === me) {
+        state.currentRunId = active.id;
+
+        const base = Number(active.durationMs || 0);
+        const startPoint = Number(active.resumedEpochMs || active.startEpochMs || 0);
+        const elapsedNow = startPoint ? base + (Date.now() - startPoint) : base;
+
+        state.runAccumMs = elapsedNow;
+        state.runStartEpoch = Date.now();
+        state.runRunning = false; // so startStopwatch will start cleanly
+
+        startStopwatch();
+        showScanStatus("This process is RUNNING (you). Reconnected.", "ok");
+
+        saveState();
+        syncStatusButtons();
+        return;
+      }
+
+      //  running by someone else -> block Start, but allow selecting other process
       state.runRunning = false;
       state.runStartEpoch = 0;
       state.runAccumMs = 0;
       if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
 
       state.currentRunId = active.id;
-
-      // lock Start (cannot start another timer)
       state.startLockedByStatus = true;
-      state.resumeLocked = false; // allow choosing other process
-      state.resumeRunStatus = "running";
+      state.resumeLocked = false;
 
-      // choose “resumed” info if available, otherwise “started”
-      const whoName =
-        active.resumedByName || active.startedByName || "Unknown";
-      const whoNo =
-        active.resumedByNumber || active.startedByNumber || "-";
+      const whoName = active.resumedByName || active.startedByName || "Unknown";
+      const whoNo   = active.resumedByNumber || active.startedByNumber || "-";
+      const verb    = active.resumedByName ? "Resumed by" : "Started by";
 
-      const verb = active.resumedByName ? "Resumed by" : "Started by";
+      showScanStatus(`This process is already RUNNING. ${verb}: ${whoName} (${whoNo}).`, "err");
 
-      showScanStatus(
-        `This process is already RUNNING. ${verb}: ${whoName} (${whoNo}).`,
-        "err"
-      );
-
-      renderStopwatch(); // will show 00:00:00 (intentionally)
+      renderStopwatch(); // 00:00:00 by design for "not yours"
       saveState();
       syncStatusButtons();
       return;
@@ -458,7 +471,6 @@ el("processSelect")?.addEventListener("change", async () => {
     const onHold = await findOnHoldRun(serialNumber, station, processName);
     if (onHold) {
       applyResumeRunToUI(onHold);
-      hideScanStatus();
       syncStatusButtons();
       return;
     }

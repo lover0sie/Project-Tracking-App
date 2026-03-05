@@ -1,5 +1,7 @@
 /* State model */
 
+
+
 export const STATE_KEY = "qrAppState_v1";
 
 export const state = {
@@ -22,6 +24,7 @@ export const state = {
   runTimer: null,
   runRunning: false,
   runAccumMs: 0,
+  scanStatusTimeout: null,
 
   // Steps: "employee" -> "project" -> "status"
   currentStep: "employee",
