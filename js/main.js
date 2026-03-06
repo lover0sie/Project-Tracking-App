@@ -33,7 +33,7 @@ import {
   reconnectToRunning
 } from "./processRuns.js";
 
-const APP_VERSION = "2026-03-06-01";
+const APP_VERSION = "2026-03-06-01"; 
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 
