@@ -3,6 +3,7 @@ import { el, setText, showScanStatus, loadProcessesForCurrentUnit } from "./ui.j
 
 /* Html5Qrcode is global */
 
+// A CHILLER QR payload is parsed into structured fields.
 function parseChillerQR(text) {
   const p = text.split(";").map(s => s.trim());
   if (p.length !== 8) return null;
@@ -22,6 +23,7 @@ function parseChillerQR(text) {
   };
 }
 
+// A PV QR payload is parsed into structured fields.
 function parsePvQR(text) {
   const p = text.split(";").map(s => s.trim());
   if (p.length !== 9) return null;
@@ -42,6 +44,7 @@ function parsePvQR(text) {
   };
 }
 
+// The scan button label and style are synchronized with scanner state.
 export function updateScanButtonUI() {
   const btn = el("start-scan");
   if (!btn) return;
@@ -57,6 +60,7 @@ export function updateScanButtonUI() {
   }
 }
 
+// The camera scanner is started with back-camera fallback behavior.
 export async function startScanner(onScanSuccessFn) {
   if (state.currentStep === "status") return;
   if (state.scanning) return;
@@ -103,6 +107,7 @@ export async function startScanner(onScanSuccessFn) {
   }
 }
 
+// The camera scanner is stopped and scanner resources are released.
 export async function stopScanner() {
   if (!state.html5Qr) {
     state.scanning = false;
@@ -123,6 +128,7 @@ export async function stopScanner() {
 }
 
 
+// A decoded QR value is validated and routed through the step-based flow.
 export async function onScanSuccess(decodedText, setStepFn) {
   console.log("scan success, currentStep:", state.currentStep);
   const text = decodedText.trim();
@@ -183,11 +189,11 @@ export async function onScanSuccess(decodedText, setStepFn) {
 
   // ---- PV QR (REQUIRED) ----
   if (pv) {
-    // enforce: must scan PV to work (your requirement)
+    // enforce: must scan PV to work (requirement)
     state.chillerSerialNumber = pv.chillerSerialNumber;
     state.vesselData = {
       ...pv,
-      // unify some UI fields your app already uses
+      // unify some UI fields app already uses
       serialNumber: pv.pvSerialNumber,  // what you show in UI
       description: pv.partNumber        // what you show as description
     };

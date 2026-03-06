@@ -1,7 +1,6 @@
 /* Main heart of the program */
 
-import { doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-import { db } from "./firebase.js"; // adjust if your path differs
+import { updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 import { state, loadState, saveState, getElapsedMs } from "./state.js";
 import {
@@ -17,8 +16,7 @@ import {
   resetAllData,
   showSaveOverlay,
   hideSaveOverlay,
-  startStopwatch,
-  stopStopwatch
+  startStopwatch
 } from "./ui.js";
 
 import { startScanner, stopScanner, updateScanButtonUI, onScanSuccess } from "./scanner.js";
@@ -31,9 +29,66 @@ import {
   completeRunAndReset,
   holdRunAndReset,
   runDoc,
-  findActiveRun
+  findActiveRun,
+  reconnectToRunning
 } from "./processRuns.js";
 
+const APP_VERSION = "2026-03-06-01";
+let updateAvailable = false;
+let latestVersion = APP_VERSION;
+
+// Array of reason that require remarks
+const reasonsRequireRemarks = [
+  "rework",
+  "item_missing",
+  "item_shortage",
+  "others"
+];
+
+// Functions to show updated code 
+
+function showUpdateBanner() {
+  el("updateBanner")?.classList.remove("hidden");
+}
+
+function hideUpdateBanner() {
+  el("updateBanner")?.classList.add("hidden");
+}
+
+function canPromptForRefresh() {
+  // Only show refresh prompt when user is not actively running a process
+  return !state.runRunning;
+}
+
+async function checkForAppUpdate() {
+  try {
+    const res = await fetch(`./version.json?t=${Date.now()}`, {
+      cache: "no-store"
+    });
+
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const serverVersion = String(data.version || "").trim();
+
+    if (!serverVersion) return;
+
+    latestVersion = serverVersion;
+
+    if (serverVersion !== APP_VERSION) {
+      updateAvailable = true;
+
+      if (canPromptForRefresh()) {
+        showUpdateBanner();
+      }
+    }
+  } catch (e) {
+    console.warn("Version check failed:", e);
+  }
+}
+
+
+// A confirmation modal is prepared and opened before process completion is committed.
 function openCompleteModal() {
   const processName =
     el("processSelect")?.value || state.selectedProcessName || "";
@@ -49,10 +104,12 @@ function openCompleteModal() {
   setTimeout(() => el("completeConfirm")?.focus(), 0);
 }
 
+// The process-completion confirmation modal is hidden.
 function closeCompleteModal() {
   el("completeModal")?.classList.add("hidden");
 }
 
+// A previously auto-held run is detected and resumed after page reload when allowed.
 async function autoResumeAfterReload() {
   const pending = sessionStorage.getItem("pendingReload");
   if (!pending) return;
@@ -119,6 +176,7 @@ async function autoResumeAfterReload() {
   }
 }
 
+// Screen visibility, scanner state, and status context are synchronized for the active step.
 async function setStep(step) {
   hideScanStatus();
   state.currentStep = step;
@@ -170,12 +228,21 @@ async function setStep(step) {
       el("statusStation") && (el("statusStation").innerText = state.employeeData.station || "-");
       el("statusManpower") && (el("statusManpower").innerText = state.employeeData.manpower ?? "-");
     }
-    if (state.vesselData) {
-      el("statusProject") && (el("statusProject").innerText = state.vesselData.projectName || "-");
-      el("statusMaterial") && (el("statusMaterial").innerText = state.vesselData.materialNumber || "-");
-      el("statusSerial") && (el("statusSerial").innerText = state.vesselData.serialNumber || "-");
-      el("statusType") && (el("statusType").innerText = state.vesselData.vesselType || state.vesselData.type || "-");
+   if (state.vesselData) {
+    el("statusProject") && (el("statusProject").innerText = state.vesselData.projectName || "-");
+    el("statusMaterial") && (el("statusMaterial").innerText = state.vesselData.materialNumber || "-");
+    el("statusSerial") && (el("statusSerial").innerText = state.vesselData.serialNumber || "-");
+
+    let displayType = "-";
+
+    if (state.vesselData.qrKind === "CHILLER") {
+      displayType = state.vesselData.coolingType || "-";
+    } else if (state.vesselData.qrKind === "PV") {
+      displayType = state.vesselData.vesselType || "-";
     }
+
+    el("statusType") && (el("statusType").innerText = displayType);
+  }
 
     // auto-check on hold for selected process
     if (state.employeeData && state.vesselData && procSel?.value) {
@@ -202,9 +269,16 @@ async function setStep(step) {
   }
 
   syncStatusButtons();
+
+  // Show update banner if the page is employee and there is an update
+  if (step === "employee" && updateAvailable && !state.runRunning) {
+  showUpdateBanner();
+  }
+
   saveState();
 }
 
+// UI fields are restored from the persisted state snapshot.
 function restoreUIFromState() {
   // restore employee UI
   if (state.employeeData) {
@@ -235,6 +309,7 @@ function restoreUIFromState() {
   syncStatusButtons();
 }
 
+// Initial state hydration and startup synchronization are performed when DOM content is loaded.
 window.addEventListener("DOMContentLoaded", async () => {
   loadState();
   restoreUIFromState();
@@ -243,14 +318,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   await stopScanner();
   updateScanButtonUI();
 
+  await checkForAppUpdate();
+
   // If we are already in status, processes exist, so try auto-resume
   if (state.currentStep === "status") {
     await autoResumeAfterReload();
   }
+  
 });
 
 /* ===== Event listeners ===== */
 
+// Timer rendering is paused/resumed based on document visibility changes.
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     if (state.runRunning && !state.runTimer) {
@@ -264,6 +343,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 
+// A best-effort auto-hold update is sent for an active running process.
 async function autoHoldActiveRun(reason = "browser_closed") {
   if (state.autoHoldSent) return;
   if (!state.currentRunId) return;
@@ -286,6 +366,7 @@ async function autoHoldActiveRun(reason = "browser_closed") {
 }
 
 
+// Employee submit input is validated and the flow is advanced to project scanning.
 el("to-project")?.addEventListener("click", async () => {
   if (!state.employeeData) {
     showScanStatus("Please scan employee QR first.", "err");
@@ -311,6 +392,7 @@ el("to-project")?.addEventListener("click", async () => {
   await setStep("project");
 });
 
+// Project submission is validated and the flow is advanced to status view.
 el("to-status")?.addEventListener("click", () => {
   if (!state.vesselData) {
     alert("Please scan project QR first.");
@@ -323,6 +405,7 @@ el("to-status")?.addEventListener("click", () => {
   setStep("status");
 });
 
+// Scanner start/stop is toggled from the scan button outside status view.
 el("start-scan")?.addEventListener("click", async () => {
   if (state.currentStep === "status") return;
   hideScanStatus();
@@ -331,37 +414,52 @@ el("start-scan")?.addEventListener("click", async () => {
   else await startScanner((decodedText) => onScanSuccess(decodedText, setStep));
 });
 
+// Start or resume behavior is delegated to run-management logic.
 el("btnStartProcess")?.addEventListener("click", startOrResumeRun);
 
+// Completion intent is guarded and then routed to the completion confirmation modal.
 el("btnStopProcess")?.addEventListener("click", () => {
   if (!state.currentRunId) return showScanStatus("No running process to complete.", "err");
   if (!state.runRunning) return showScanStatus("Process is not running.", "err");
   openCompleteModal();
 });
 
+// Hold intent is guarded and then routed to the on-hold modal.
 el("btnHoldProcess")?.addEventListener("click", () => {
   if (!state.currentRunId) return showScanStatus("No running process to hold.", "err");
   openHoldModal();
 });
 
+// On-hold modal dismissal is handled and button states are re-synchronized.
 el("holdCancel")?.addEventListener("click", () => {
   closeHoldModal();
   syncStatusButtons();
 });
 
+// On-hold reason changes are reflected by conditional remarks input visibility.
 el("holdReason")?.addEventListener("change", () => {
-  const reason = el("holdReason")?.value;
+  const reason = (el("holdReason")?.value || "").trim();
   const remarksBox = el("holdRemarks");
+
   if (!remarksBox) return;
 
-  if (reason === "others") {
+  const mustFillRemark = reasonsRequireRemarks.includes(reason);
+
+  // If the reason is in the array, then the remarks box will appear
+
+  if (mustFillRemark){
     remarksBox.classList.remove("hidden");
+    remarksBox.required = true;
   } else {
     remarksBox.classList.add("hidden");
-    remarksBox.value = "";
+    remarksBox.required = false;
+    remarksBox.value = ""
+
   }
+
 });
 
+// On-hold data is validated and persisted through hold-run flow.
 el("holdSave")?.addEventListener("click", async () => {
   if (!state.currentRunId) {
     closeHoldModal();
@@ -372,18 +470,23 @@ el("holdSave")?.addEventListener("click", async () => {
   const remarksRaw = (el("holdRemarks")?.value || "").trim();
 
   if (!reason) return showScanStatus("Please select a hold reason.", "err");
-  if (reason === "others" && !remarksRaw) {
-    showScanStatus("Remarks are required when 'Others' is selected.", "err");
+  
+  const mustFillRemarks = reasonsRequireRemarks.includes(reason);
+
+  // If the reason is in the array, then it is required to fill in
+  if (mustFillRemarks && !remarksRaw){
+    showScanStatus("Remarks are required for this reason.", "err");
     el("holdRemarks")?.focus();
     return;
   }
 
-  const finalRemarks = (reason === "others") ? remarksRaw : "";
+  const finalRemarks = mustFillRemarks ? remarksRaw : "";
 
   closeHoldModal();
-  await holdRunAndReset(finalRemarks ? "others" : reason, finalRemarks, setStep, resetAllData, hideSaveOverlay, showSaveOverlay);
+  await holdRunAndReset(reason, finalRemarks, setStep, resetAllData, hideSaveOverlay, showSaveOverlay);
 });
 
+// Process-selection changes are persisted and run status is re-evaluated against Firestore.
 el("processSelect")?.addEventListener("change", async () => {
   const proc = el("processSelect")
   if (proc) state.selectedProcessName = proc.value;
@@ -426,21 +529,7 @@ el("processSelect")?.addEventListener("change", async () => {
 
       //  running by YOU -> reconnect and show time
       if (lastEmp && lastEmp === me) {
-        state.currentRunId = active.id;
-
-        const base = Number(active.durationMs || 0);
-        const startPoint = Number(active.resumedEpochMs || active.startEpochMs || 0);
-        const elapsedNow = startPoint ? base + (Date.now() - startPoint) : base;
-
-        state.runAccumMs = elapsedNow;
-        state.runStartEpoch = Date.now();
-        state.runRunning = false; // so startStopwatch will start cleanly
-
-        startStopwatch();
-        showScanStatus("This process is RUNNING (you). Reconnected.", "ok");
-
-        saveState();
-        syncStatusButtons();
+        reconnectToRunning(active);
         return;
       }
 
@@ -496,10 +585,12 @@ el("processSelect")?.addEventListener("change", async () => {
   }
 });
 
+// Auto-hold execution is requested as a thin wrapper for unload events.
 function requestAutoHold(reason = "browser_closed") {
   autoHoldActiveRun(reason); // best-effort
 }
 
+// Active-run state is protected during page unload via best-effort auto-hold.
 window.addEventListener("beforeunload", (e) => {
   if (state.runRunning) {
     // Mark that this tab is reloading/navigating (sessionStorage survives refresh)
@@ -514,20 +605,12 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 // pagehide fires on tab close + navigation + iOS Safari cases
+// Auto-hold is requested on page-hide scenarios, including BFCache-related cases.
 window.addEventListener("pagehide", () => {
   requestAutoHold("browser_closed");
 });
 
-window.addEventListener("DOMContentLoaded", async () => {
-  loadState();
-  restoreUIFromState();
-  syncStatusButtons();
-
-  // do not auto start scanner
-  await stopScanner();
-  updateScanButtonUI();
-});
-
+// Timer rendering is restored when the page is shown again from cache/navigation.
 window.addEventListener("pageshow", () => {
   // When page is shown again (Safari BFCache), restore timer tick if needed
   if (state.runRunning && !state.runTimer) {
@@ -537,12 +620,27 @@ window.addEventListener("pageshow", () => {
   syncStatusButtons();
 });
 
+// Completion modal cancellation is handled without state mutation.
 el("completeCancel")?.addEventListener("click", () => {
   closeCompleteModal();
 });
 
+// Completion confirmation is committed through complete-run flow.
 el("completeConfirm")?.addEventListener("click", async () => {
   closeCompleteModal();
   await completeRunAndReset(setStep, resetAllData, hideSaveOverlay, showSaveOverlay);
 });
 
+// Refresh button logic
+el("refreshAppBtn")?.addEventListener("click", () => {
+  window.location.reload();
+});
+
+// Check for updates every 3 minutes
+setInterval(async () => {
+  await checkForAppUpdate();
+
+  if (updateAvailable && canPromptForRefresh()) {
+    showUpdateBanner();
+  }
+}, 3 * 60 * 1000);

@@ -12,6 +12,11 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 
+<div id="updateBanner" class="update-banner hidden">
+  <span>A new version of the app is available.</span>
+  <button id="refreshAppBtn" type="button">Refresh</button>
+</div>
+
 <body>
   <div class="wrap">
     <h2>Project Tracking App</h2>
@@ -121,11 +126,13 @@
       <option value="rework">Rework Required</option>
       <option value="item_missing">Item Missing</option>
       <option value="item_shortage">Material Shortage</option>
+      <option value ="MT"> MT (UWD model)</option>
+      <option value = "ASME"> ASME </option>
       <option value="resume_tomorrow">Resume Next Shift / Tomorrow</option>
       <option value="others">Others (specify)</option>
     </select>
 
-    <label for="holdRemarks" id="holdRemarksLabel" class="hidden">Remarks (required for “Others”)</label>
+    <label for="holdRemarks" id="holdRemarksLabel" class="hidden">Remarks (Required)</label>
     <textarea
       id="holdRemarks"
       class="hidden"

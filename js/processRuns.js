@@ -15,7 +15,6 @@ import {
   state,
   saveState,
   getMYDateKey,
-  getAllPrevProcessNames,
   getElapsedMs
 } from "./state.js";
 
@@ -29,16 +28,19 @@ import {
 } from "./ui.js";
 
 
+// The Firestore runs subcollection reference is resolved for the active chiller key.
 function runsCol() {
   if (!state.chillerSerialNumber) throw new Error("Missing state.chillerSerialNumber");
   return collection(db, "processRuns", state.chillerSerialNumber, "runs");
 }
 
+// The Firestore document reference is resolved for a specific run id.
 export function runDoc(runId) {
   if (!state.chillerSerialNumber) throw new Error("Missing state.chillerSerialNumber");
   return doc(db, "processRuns", state.chillerSerialNumber, "runs", runId);
 }
 
+// The first matching on-hold run is queried for a serial, station, and process.
 export async function findOnHoldRun(serialNumber, station, processName) {
   const q = query(
     runsCol(),
@@ -54,6 +56,7 @@ export async function findOnHoldRun(serialNumber, station, processName) {
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
+// The first matching active running run is queried for a serial, station, and process.
 export async function findActiveRun(serialNumber, station, processName) {
   const q = query(
     runsCol(),
@@ -69,6 +72,7 @@ export async function findActiveRun(serialNumber, station, processName) {
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
 
+// Completion status is checked for a serial and process pair.
 export async function hasCompletedProcess(serialNumber, processName) {
   const q = query(
     runsCol(),
@@ -81,6 +85,7 @@ export async function hasCompletedProcess(serialNumber, processName) {
   return !snap.empty;
 }
 
+// On-hold run data is projected into local state and status UI.
 export function applyResumeRunToUI(runDoc) {
   state.currentRunId = runDoc.id;
 
@@ -116,7 +121,8 @@ export function applyResumeRunToUI(runDoc) {
   syncStatusButtons();
 }
 
-function reconnectToRunning(active) {
+// Local runtime is reconnected to an existing active run owned by the same operator.
+export function reconnectToRunning(active) {
   // Who owns the running process?
   const lastEmp = String(active.resumedByNumber || active.startedByNumber || "").trim();
   const me = String(state.employeeData.employeeNumber || "").trim();
@@ -146,6 +152,7 @@ function reconnectToRunning(active) {
   return true;
 }
 
+// A run is started, resumed, or blocked based on current Firestore and UI state.
 export async function startOrResumeRun() {
   if (!state.chillerSerialNumber) {
     return showScanStatus("Missing chiller serial number. Scan PV/Chiller QR again.", "err");
@@ -181,21 +188,7 @@ export async function startOrResumeRun() {
 
       //  Running by YOU -> reconnect and show elapsed
       if (lastEmp && lastEmp === me) {
-        state.currentRunId = active.id;
-
-        const base = Number(active.durationMs || 0);
-        const startPoint = Number(active.resumedEpochMs || active.startEpochMs || 0);
-        const elapsedNow = startPoint ? base + (Date.now() - startPoint) : base;
-
-        state.runAccumMs = elapsedNow;
-        state.runStartEpoch = Date.now();
-        state.runRunning = false; // let startStopwatch start cleanly
-
-        startStopwatch();  // timer ticks + buttons update in your syncStatusButtons
-        showScanStatus("This process is RUNNING (you). Reconnected.", "ok");
-
-        saveState();
-        syncStatusButtons();
+        reconnectToRunning(active);
         return;
       }
 
@@ -329,6 +322,7 @@ export async function startOrResumeRun() {
   }
 }
 
+// A running process is completed in Firestore and local UI/state is reset.
 export async function completeRunAndReset(setStepFn, resetAllDataFn, hideOverlayFn, showOverlayFn) {
   if (!state.currentRunId) {
     showScanStatus("No running process to complete.", "err");
@@ -369,6 +363,7 @@ export async function completeRunAndReset(setStepFn, resetAllDataFn, hideOverlay
   }
 }
 
+// A running process is saved as on-hold in Firestore and local UI/state is reset.
 export async function holdRunAndReset(reason, remarks, setStepFn, resetAllDataFn, hideOverlayFn, showOverlayFn) {
   if (!state.currentRunId) return;
 

@@ -1,7 +1,5 @@
 /* State model */
 
-
-
 export const STATE_KEY = "qrAppState_v1";
 
 export const state = {
@@ -51,7 +49,8 @@ export const PROCESS_BY_PV = {
   "EVAPORATOR": [
     "6 - Hole bevelling",
     "7 - Connector welding",
-    "8 - Fitting internal plate and GMAW C&B",
+    "8A - Fitting internal plate",
+    "8B - GMAW C&B",
     "9 - Fitting and welding distribution box",
     "10 - Tube support, bush fitting, and tube sheet fitting",
     "11 - Tubesheet welding",
@@ -68,14 +67,15 @@ export const PROCESS_BY_PV = {
    "CONDENSER": [
     "6 - Hole bevelling",
     "7 - Connector welding",
-    "8 - Fitting internal plate and GMAW C&B",
+    "8A - Fitting internal plate",
+    "8B - GMAW C&B",
     "9 - Fitting and welding distribution box",
     "10 - Tube support, bush fitting, and tube sheet fitting",
     "11 - Tubesheet welding",
     "12 - Bracket and attachment welding, copper tube brazing",
     "13 - Unit side plate and base welding",
-    "14.1 - Tube slotting",
-    "14.2 - Tube expansion",
+    "14A - Tube slotting",
+    "14B - Tube expansion",
     "15 - Primer painting",
     "16 - Pneumatic testing",
     "17 - Hydrostatic testing",
@@ -105,14 +105,13 @@ export const PROCESS_BY_PV = {
 export const PROCESS_BY_CHILLER = {
   "AIR-COOLED": [
     "Piping shop",
-    "Steel pipe cutting"
   ],
   "WATER-COOLED": [
     "Piping shop",
-    "Steel pipe cutting"
   ]
 };
 
+// A normalized vessel type key is produced for process-map lookup.
 export function getVesselTypeKey(v) {
   const raw =
     (typeof v === "string")
@@ -125,12 +124,14 @@ export function getVesselTypeKey(v) {
     .replaceAll("_", " ");
 }
 
+// A vessel type is inferred from the suffix of a PV serial number.
 export function getVesselTypeFromPvSerial(pvSerial = "") {
   const suffix = pvSerial.trim().slice(-1).toUpperCase();
   const map = { E: "EVAPORATOR", C: "CONDENSER", J: "ECONOMIZER", Y: "OIL SEPARATOR" };
   return map[suffix] || "UNKNOWN";
 }
 
+// All process names before the current process are returned for ordering checks.
 export function getAllPrevProcessNames(currentProcessName) {
   const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
 
@@ -148,6 +149,7 @@ export function getAllPrevProcessNames(currentProcessName) {
   return list.slice(0, idx);
 }
 
+// A Malaysia-local date key is generated in YYYY-MM-DD format.
 export function getMYDateKey(d = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kuala_Lumpur",
@@ -162,6 +164,7 @@ export function getMYDateKey(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
+// The current Malaysia day range is returned as start/end Date objects.
 export function getMYDayRange() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -182,6 +185,7 @@ export function getMYDayRange() {
   return { start, end, myDateStr };
 }
 
+// Repeated scans within a short window are detected and filtered.
 export function shouldIgnoreDuplicate(text, windowMs = 1200) {
   const now = Date.now();
   const same = text === state.lastDecodedText && (now - state.lastDecodedAt) < windowMs;
@@ -190,6 +194,7 @@ export function shouldIgnoreDuplicate(text, windowMs = 1200) {
   return same;
 }
 
+// Elapsed milliseconds are formatted into HH:MM:SS text.
 export function formatMs(ms) {
   const totalSec = Math.floor(ms / 1000);
   const h = Math.floor(totalSec / 3600);
@@ -198,32 +203,13 @@ export function formatMs(ms) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// Total elapsed runtime is computed from accumulated and active stopwatch state.
 export function getElapsedMs() {
   if (!state.runRunning) return state.runAccumMs;
   return state.runAccumMs + (Date.now() - state.runStartEpoch);
 }
 
-function elapsedFromRun(run) {
-  const start = run.startEpochMs;
-  const hold  = run.holdEpochMs;
-
-  // If you later add run.accumulatedMs, include it too:
-  const accumulated = run.accumulatedMs || 0;
-
-  if (run.status === "on_hold") {
-    if (!hold || !start) return accumulated;
-    return accumulated + (hold - start);
-  }
-
-  if (run.status === "running") {
-    const resumed = run.resumedEpochMs || start;
-    if (!resumed) return accumulated;
-    return accumulated + (Date.now() - resumed);
-  }
-
-  return accumulated;
-}
-
+// A session snapshot of important runtime state is persisted.
 export function saveState() {
   if (!state.stateEnabled) return;
 
@@ -247,6 +233,7 @@ export function saveState() {
   sessionStorage.setItem(STATE_KEY, JSON.stringify(snapshot)); 
 }
 
+// A saved session snapshot is restored into live runtime state.
 export function loadState() {
   const raw = sessionStorage.getItem(STATE_KEY);
   if (!raw) return;

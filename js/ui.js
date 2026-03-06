@@ -2,13 +2,16 @@
 
 import { state, PROCESS_BY_PV, PROCESS_BY_CHILLER,  getVesselTypeKey, formatMs, getElapsedMs, saveState } from "./state.js";
 
+// A DOM element is retrieved by id.
 export const el = (id) => document.getElementById(id);
 
+// Text content is assigned to a target element with a fallback placeholder.
 export function setText(id, value) {
   const node = el(id);
   if (node) node.innerText = value ?? "-";
 }
 
+// A scan status message is displayed and optionally auto-hidden.
 export function showScanStatus(msg, type = "info", autoHideMs = 0) {
   const box = el("scan-status");
   if (!box) return;
@@ -31,6 +34,7 @@ export function showScanStatus(msg, type = "info", autoHideMs = 0) {
   }
 }
 
+// The scan status message is cleared and hidden.
 export function hideScanStatus() {
   const box = el("scan-status");
   if (!box) return;
@@ -46,6 +50,7 @@ export function hideScanStatus() {
   box.classList.remove("ok", "err", "info");
 }
 
+// A saving overlay is shown with optional success styling.
 export function showSaveOverlay(text = "Saving...", isSuccess = false) {
   const overlay = el("saveOverlay");
   const txt = el("saveOverlayText");
@@ -56,12 +61,14 @@ export function showSaveOverlay(text = "Saving...", isSuccess = false) {
   overlay.classList.remove("hidden");
 }
 
+// The saving overlay is hidden.
 export function hideSaveOverlay() {
   const overlay = el("saveOverlay");
   if (!overlay) return;
   overlay.classList.add("hidden");
 }
 
+// Stepper visuals are updated to reflect the active workflow step.
 export function updateStepper(step) {
   const idx = step === "employee" ? 1 : step === "project" ? 2 : 3;
 
@@ -83,6 +90,7 @@ export function updateStepper(step) {
   if (fill) fill.style.width = (idx === 1 ? 0 : idx === 2 ? 50 : 100) + "%";
 }
 
+// Process options are populated based on the current scanned unit scope.
 export function loadProcessesForCurrentUnit() {
   const sel = el("processSelect");
   if (!sel) return;
@@ -125,12 +133,14 @@ export function loadProcessesForCurrentUnit() {
   }
 }
 
+// The stopwatch display is rendered from current elapsed runtime.
 export function renderStopwatch() {
   const sw = el("stopwatch");
   if (!sw) return;
   sw.textContent = formatMs(getElapsedMs());
 }
 
+// Stopwatch timing is started or restored for the active run.
 export function startStopwatch() {
   // If already running but interval missing (refresh/back from background), restore it
   if (state.runRunning) {
@@ -152,6 +162,7 @@ export function startStopwatch() {
   saveState();
 }
 
+// Stopwatch timing is stopped and elapsed runtime is accumulated.
 export function stopStopwatch() {
   if (!state.runRunning) return;
 
@@ -172,6 +183,7 @@ export function stopStopwatch() {
   saveState();
 }
 
+// Status-page button enabled states are synchronized with runtime conditions.
 export function syncStatusButtons() {
   const startBtn = el("btnStartProcess");
   const stopBtn = el("btnStopProcess");
@@ -193,6 +205,7 @@ export function syncStatusButtons() {
   if (procSel) procSel.disabled = state.runRunning || state.resumeLocked;
 }
 
+// The on-hold modal is opened and input fields are reset.
 export function openHoldModal() {
   el("holdModal")?.classList.remove("hidden");
   if (el("holdReason")) el("holdReason").value = "";
@@ -201,10 +214,12 @@ export function openHoldModal() {
   setTimeout(() => el("holdReason")?.focus(), 0);
 }
 
+// The on-hold modal is hidden.
 export function closeHoldModal() {
   el("holdModal")?.classList.add("hidden");
 }
 
+// Runtime data and UI fields are reset to the initial workflow state.
 export function resetAllData() {
   state.resumeLocked = false;
   state.resumeRunStatus = null;

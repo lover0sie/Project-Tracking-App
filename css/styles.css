@@ -28,6 +28,37 @@ body{
   background:var(--bg);
 }
 
+/* App new version banner */
+
+.update-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff3cd;
+  color: #664d03;
+  border: 1px solid #ffecb5;
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.12);
+  font-size: 14px;
+}
+
+.update-banner.hidden {
+  display: none;
+}
+
+.update-banner button {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
 /* Never allow page-wide horizontal scroll */
 html, body {
   width: 100%;
