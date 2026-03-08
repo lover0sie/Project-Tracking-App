@@ -1,6 +1,6 @@
 /* Update the UI */
 
-import { state, PROCESS_BY_PV, PROCESS_BY_CHILLER,  getVesselTypeKey, formatMs, getElapsedMs, saveState } from "./state.js";
+import { state, PROCESS_BY_PV, PROCESS_BY_CHILLER,  getVesselTypeKey, formatMs, getElapsedMs, saveState, clearPersistedState } from "./state.js";
 
 // A DOM element is retrieved by id.
 export const el = (id) => document.getElementById(id);
@@ -195,6 +195,7 @@ export function syncStatusButtons() {
   const startDisabled =
     state.runRunning ||
     state.startInFlight ||
+    state.statusCheckInFlight ||
     state.startLockedByStatus ||
     noProcessSelected;
 
@@ -226,7 +227,7 @@ export function resetAllData() {
   state.resumeProcessName = null;
 
   state.stateEnabled = false;
-  sessionStorage.removeItem("qrAppState_v1");
+  clearPersistedState();
 
   state.employeeData = null;
   state.vesselData = null;

@@ -1,6 +1,11 @@
 /* State model */
 
 export const STATE_KEY = "qrAppState_v1";
+const STATE_FALLBACK_KEY_PREFIX = "qrAppState_v1_fallback";
+const FALLBACK_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const TAB_NAME_PREFIX = "qrapp_tab_";
+
+let cachedTabId = null;
 
 export const state = {
   // QR scanner
@@ -41,7 +46,8 @@ export const state = {
 
   // locks
   startLockedByStatus: false,
-  startInFlight: false
+  startInFlight: false,
+  statusCheckInFlight: false
 };
 
 // Vessel -> processes
@@ -227,19 +233,40 @@ export function saveState() {
     selectedProcessName: state.selectedProcessName,
     chillerSerialNumber: state.chillerSerialNumber,
     activeScope: state.activeScope,
+    savedAtEpochMs: Date.now()
   };
 
-  // user session storage instead of localstorage
-  sessionStorage.setItem(STATE_KEY, JSON.stringify(snapshot)); 
+  sessionStorage.setItem(STATE_KEY, JSON.stringify(snapshot));
+
+  // iOS Safari can evict background tabs and lose sessionStorage.
+  // Keep a short-lived fallback to restore workflow step and scanned data.
+  try {
+    localStorage.setItem(getFallbackStorageKey(), JSON.stringify(snapshot));
+  } catch (_) {
+    // Ignore storage quota/private-mode errors.
+  }
 }
 
 // A saved session snapshot is restored into live runtime state.
 export function loadState() {
-  const raw = sessionStorage.getItem(STATE_KEY);
+  let raw = sessionStorage.getItem(STATE_KEY);
+  let fromFallback = false;
+
+  if (!raw) {
+    raw = localStorage.getItem(getFallbackStorageKey());
+    fromFallback = !!raw;
+  }
+
   if (!raw) return;
 
   try {
     const s = JSON.parse(raw);
+    const savedAtEpochMs = Number(s.savedAtEpochMs || 0);
+
+    if (savedAtEpochMs && (Date.now() - savedAtEpochMs) > FALLBACK_MAX_AGE_MS) {
+      clearPersistedState();
+      return;
+    }
 
     state.currentStep = s.currentStep || "employee";
     state.employeeData = s.employeeData || null;
@@ -265,8 +292,51 @@ export function loadState() {
     state.chillerSerialNumber = s.chillerSerialNumber || null;
     state.activeScope = s.activeScope || null;
 
+    if (fromFallback) {
+      // Restore into session for current tab lifecycle.
+      sessionStorage.setItem(STATE_KEY, JSON.stringify(s));
+    }
+
   } catch (e) {
     console.error("State load failed", e);
-    sessionStorage.removeItem(STATE_KEY);
+    clearPersistedState();
+  }
+}
+
+export function clearPersistedState() {
+  sessionStorage.removeItem(STATE_KEY);
+  try {
+    localStorage.removeItem(getFallbackStorageKey());
+  } catch (_) {
+    // Ignore private-mode/localStorage access errors.
+  }
+}
+
+function getFallbackStorageKey() {
+  return `${STATE_FALLBACK_KEY_PREFIX}_${getTabId()}`;
+}
+
+function getTabId() {
+  if (cachedTabId) return cachedTabId;
+
+  try {
+    const name = String(window.name || "").trim();
+    if (name.startsWith(TAB_NAME_PREFIX)) {
+      cachedTabId = name.slice(TAB_NAME_PREFIX.length);
+      if (cachedTabId) return cachedTabId;
+    }
+
+    const generated =
+      (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+    cachedTabId = generated;
+    window.name = `${TAB_NAME_PREFIX}${generated}`;
+    return cachedTabId;
+  } catch (_) {
+    // Last-resort fallback if window access is restricted for any reason.
+    cachedTabId = "default";
+    return cachedTabId;
   }
 }
