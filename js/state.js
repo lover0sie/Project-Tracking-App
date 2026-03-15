@@ -4,6 +4,8 @@ export const STATE_KEY = "qrAppState_v1";
 const STATE_FALLBACK_KEY_PREFIX = "qrAppState_v1_fallback";
 const FALLBACK_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 const TAB_NAME_PREFIX = "qrapp_tab_";
+const TAB_ID_SESSION_KEY = "qrAppTabId";
+const TAB_ID_HISTORY_KEY = "__qrAppTabId";
 
 let cachedTabId = null;
 
@@ -239,7 +241,7 @@ export function saveState() {
   sessionStorage.setItem(STATE_KEY, JSON.stringify(snapshot));
 
   // iOS Safari can evict background tabs and lose sessionStorage.
-  // Keep a short-lived fallback to restore workflow step and scanned data.
+  // Keep a short-lived per-tab localStorage fallback to restore workflow step and scanned data.
   try {
     localStorage.setItem(getFallbackStorageKey(), JSON.stringify(snapshot));
   } catch (_) {
@@ -293,8 +295,13 @@ export function loadState() {
     state.activeScope = s.activeScope || null;
 
     if (fromFallback) {
-      // Restore into session for current tab lifecycle.
+      // Restore into session and current-tab fallback for this lifecycle.
       sessionStorage.setItem(STATE_KEY, JSON.stringify(s));
+      try {
+        localStorage.setItem(getFallbackStorageKey(), JSON.stringify(s));
+      } catch (_) {
+        // Ignore storage quota/private-mode errors.
+      }
     }
 
   } catch (e) {
@@ -320,10 +327,27 @@ function getTabId() {
   if (cachedTabId) return cachedTabId;
 
   try {
+    const sessionTabId = String(sessionStorage.getItem(TAB_ID_SESSION_KEY) || "").trim();
+    if (sessionTabId) {
+      cachedTabId = sessionTabId;
+      syncTabIdentity(sessionTabId);
+      return cachedTabId;
+    }
+
+    const historyTabId = String(window.history?.state?.[TAB_ID_HISTORY_KEY] || "").trim();
+    if (historyTabId) {
+      cachedTabId = historyTabId;
+      syncTabIdentity(historyTabId);
+      return cachedTabId;
+    }
+
     const name = String(window.name || "").trim();
     if (name.startsWith(TAB_NAME_PREFIX)) {
       cachedTabId = name.slice(TAB_NAME_PREFIX.length);
-      if (cachedTabId) return cachedTabId;
+      if (cachedTabId) {
+        syncTabIdentity(cachedTabId);
+        return cachedTabId;
+      }
     }
 
     const generated =
@@ -332,11 +356,35 @@ function getTabId() {
         : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
     cachedTabId = generated;
-    window.name = `${TAB_NAME_PREFIX}${generated}`;
+    syncTabIdentity(generated);
     return cachedTabId;
   } catch (_) {
     // Last-resort fallback if window access is restricted for any reason.
     cachedTabId = "default";
     return cachedTabId;
+  }
+}
+
+function syncTabIdentity(tabId) {
+  try {
+    sessionStorage.setItem(TAB_ID_SESSION_KEY, tabId);
+  } catch (_) {
+    // Ignore restricted storage access.
+  }
+
+  try {
+    const nextState = {
+      ...(window.history?.state && typeof window.history.state === "object" ? window.history.state : {}),
+      [TAB_ID_HISTORY_KEY]: tabId
+    };
+    window.history.replaceState(nextState, document.title);
+  } catch (_) {
+    // Ignore history-state failures.
+  }
+
+  try {
+    window.name = `${TAB_NAME_PREFIX}${tabId}`;
+  } catch (_) {
+    // Ignore window access failures.
   }
 }
