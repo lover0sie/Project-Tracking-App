@@ -6,6 +6,7 @@ const FALLBACK_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 const TAB_NAME_PREFIX = "qrapp_tab_";
 const TAB_ID_SESSION_KEY = "qrAppTabId";
 const TAB_ID_HISTORY_KEY = "__qrAppTabId";
+const TAB_ID_QUERY_PARAM = "tab";
 
 let cachedTabId = null;
 
@@ -327,6 +328,13 @@ function getTabId() {
   if (cachedTabId) return cachedTabId;
 
   try {
+    const urlTabId = String(new URL(window.location.href).searchParams.get(TAB_ID_QUERY_PARAM) || "").trim();
+    if (urlTabId) {
+      cachedTabId = urlTabId;
+      syncTabIdentity(urlTabId);
+      return cachedTabId;
+    }
+
     const sessionTabId = String(sessionStorage.getItem(TAB_ID_SESSION_KEY) || "").trim();
     if (sessionTabId) {
       cachedTabId = sessionTabId;
@@ -373,11 +381,16 @@ function syncTabIdentity(tabId) {
   }
 
   try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(TAB_ID_QUERY_PARAM) !== tabId) {
+      url.searchParams.set(TAB_ID_QUERY_PARAM, tabId);
+    }
+
     const nextState = {
       ...(window.history?.state && typeof window.history.state === "object" ? window.history.state : {}),
       [TAB_ID_HISTORY_KEY]: tabId
     };
-    window.history.replaceState(nextState, document.title);
+    window.history.replaceState(nextState, document.title, url.toString());
   } catch (_) {
     // Ignore history-state failures.
   }
