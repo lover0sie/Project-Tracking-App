@@ -58,8 +58,9 @@ export const PROCESS_BY_PV = {
   "EVAPORATOR": [
     "6 - Hole bevelling",
     "7 - Connector welding",
-    "8A - Fitting internal plate",
-    "8B - GMAW C&B",
+    "8A - Internal plate assembly",
+    "8B - Fitting internal plate",
+    "8C - GMAW C&B",
     "9 - Fitting and welding distribution box",
     "10 - Tube support, bush fitting, and tube sheet fitting",
     "11 - Tubesheet welding",
@@ -76,8 +77,9 @@ export const PROCESS_BY_PV = {
    "CONDENSER": [
     "6 - Hole bevelling",
     "7 - Connector welding",
-    "8A - Fitting internal plate",
-    "8B - GMAW C&B",
+    "8A - Internal plate assembly",
+    "8B - Fitting internal plate",
+    "8C - GMAW C&B",
     "9 - Fitting and welding distribution box",
     "10 - Tube support, bush fitting, and tube sheet fitting",
     "11 - Tubesheet welding",
@@ -114,9 +116,25 @@ export const PROCESS_BY_PV = {
 export const PROCESS_BY_CHILLER = {
   "AIR-COOLED": [
     "Piping shop",
+    "Insulation 1",
+    "Insulation 2",
+    "Major components assembly",
+    "Steel pipe welding",
+    "Copper pipe brazing",
+    "Control box and wiring",
+    "Piping insulation",
+    "Packing"
   ],
   "WATER-COOLED": [
     "Piping shop",
+    "Insulation 1",
+    "Insulation 2",
+    "Major components assembly",
+    "Steel pipe welding",
+    "Copper pipe brazing",
+    "Control box and wiring",
+    "Piping insulation",
+    "Packing"
   ]
 };
 
