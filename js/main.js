@@ -116,6 +116,9 @@ async function setStep(step) {
   el("screen-project")?.classList.toggle("hidden", step !== "project");
   el("screen-status")?.classList.toggle("hidden", step !== "status");
 
+  el("backToEmployeeBtn")?.classList.toggle("hidden", step !== "project");
+  el("backToProjectBtn")?.classList.toggle("hidden", step !== "status");
+
   const inStatus = (step === "status");
 
   // hide scanner in Status
@@ -521,6 +524,18 @@ el("completeConfirm")?.addEventListener("click", async () => {
 // Refresh button logic
 el("refreshAppBtn")?.addEventListener("click", () => {
   window.location.reload();
+});
+
+// Button back to employee page
+el("backToEmployeeBtn")?.addEventListener("click", async () => {
+  if (state.scanning) await stopScanner();
+  await setStep("employee");
+});
+
+// Button back to project page
+el("backToProjectBtn")?.addEventListener("click", async () => {
+  if (state.scanning) await stopScanner();
+  await setStep("project");
 });
 
 // Check for updates every 3 minutes

@@ -14,6 +14,9 @@ import {
 import {
   state,
   saveState,
+  isStationAllowedForVessel,
+  getStationKey,
+  getVesselTypeKey,
   getMYDateKey,
   getElapsedMs
 } from "./state.js";
@@ -176,9 +179,26 @@ export async function startOrResumeRun() {
   syncStatusButtons();
 
   try {
-    const serialNumber = state.vesselData.serialNumber;
-    const station = state.employeeData.station;
+    const serialNumber = String(state.vesselData.serialNumber).trim();
+    const station = String(state.employeeData.station).trim();
     const runDate = getMYDateKey();
+
+    const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
+    
+    // Validate the station
+    if (kind === "PV") {
+      const stationKey = getStationKey(state.employeeData);
+      const vesselKey = getVesselTypeKey(state.vesselData?.vesselType);
+
+      if (!isStationAllowedForVessel(stationKey, vesselKey)) {
+        showScanStatus(
+          `Station ${stationKey} is not allowed for ${vesselKey}.`,
+          "err"
+        );
+        syncStatusButtons();
+        return;
+      }
+    }
 
     // 1) Block if already running
     const active = await findActiveRun(serialNumber, station, processName);
@@ -293,6 +313,7 @@ export async function startOrResumeRun() {
       chillerSerialNumber: v.chillerSerialNumber || null,
       pvSerialNumber: v.pvSerialNumber || null,
       vesselType: v.vesselType || null,
+      coolingType: v.coolingType || null,
       partNumber: v.partNumber || null,
       partDescription: v.partDescription || null,
       model: v.model || null,

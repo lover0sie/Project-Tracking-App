@@ -70,7 +70,13 @@
 
     <!-- SCREEN 2 -->
     <section id="screen-project" class="screen hidden">
+      
+      <button id="backToEmployeeBtn" class="section-back-btn hidden" type="button">
+        ← Return to QR Employee
+      </button>
+     
       <h3>Project Info</h3>
+
       <div class="field"><b>Project Name:</b> <span id="projectName">-</span></div>
       <div class="field"><b>Description:</b> <span id="description">-</span></div>
       <div class="field"><b>Material No:</b> <span id="materialNumber">-</span></div>
@@ -82,6 +88,13 @@
 
     <!-- SCREEN 3 -->
     <section id="screen-status" class="screen hidden">
+
+
+      <button id="backToProjectBtn" class="section-back-btn hidden" type="button">
+        ← Return to QR Project
+      </button>
+
+
       <h3>Description</h3>
 
       <div class="status-header">
@@ -104,7 +117,7 @@
       
        
       
-    <button id="btnStartProcess">Start</button>
+     <button id="btnStartProcess">Start</button>
       
 
       <!-- Row 2 -->
@@ -112,6 +125,7 @@
         <button id="btnStopProcess" disabled>Completed</button>
         <button id="btnHoldProcess" disabled>On Hold</button>
       </div>
+      
         
     </section>
 
@@ -146,6 +160,9 @@
     </div>
   </div>
 </div>
+
+
+
 
 <!-- Confirm Complete Modal -->
 <div id="completeModal" class="modal hidden">

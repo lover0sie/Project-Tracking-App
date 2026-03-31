@@ -53,72 +53,219 @@ export const state = {
   statusCheckInFlight: false
 };
 
-// Vessel -> processes
-export const PROCESS_BY_PV = {
-  "EVAPORATOR": [
-    "6 - Hole bevelling",
-    "7 - Connector welding",
-    "8A - Fitting internal plate",
-    "8B - GMAW C&B",
-    "9 - Fitting and welding distribution box",
-    "10 - Tube support, bush fitting, and tube sheet fitting",
-    "11 - Tubesheet welding",
-    "12 - Bracket and attachment welding, copper tube brazing",
-    "13 - Unit side plate and base welding",
-    "14A - Tube slotting",
-    "14B - Tube expansion",
-    "15 - Primer painting",
-    "16 - Pneumatic testing",
-    "17 - Hydrostatic testing",
-    "18, 19 - Primer painting (weld seam) and top coat painting"
-  ],
+// Station -> vessel type -> processes 
+export const PROCESS_BY_LINE = {
+  "PV 1": {
+    "EVAPORATOR": [
+      "6, 7, 8 - Hole bevelling, connector welding, fitting internal plate, and GMAW C&B",
+      "9, 10, 11 - Fitting and welding distribution box, tube support, bush fitting, tubesheet fitting, and tubesheet welding",
+      "12, 13 - Bracket and attachment welding, copper tube brazing, unit side plate, and base welding",
+      "14 - Tube slotting and expansion"
+    ],
 
-   "CONDENSER": [
-    "6 - Hole bevelling",
-    "7 - Connector welding",
-    "8A - Fitting internal plate",
-    "8B - GMAW C&B",
-    "9 - Fitting and welding distribution box",
-    "10 - Tube support, bush fitting, and tube sheet fitting",
-    "11 - Tubesheet welding",
-    "12 - Bracket and attachment welding, copper tube brazing",
-    "13 - Unit side plate and base welding",
-    "14A - Tube slotting",
-    "14B - Tube expansion",
-    "15 - Primer painting",
-    "16 - Pneumatic testing",
-    "17 - Hydrostatic testing",
-    "18, 19 - Primer painting (weld seam) and top coat painting"
-  ],
+    "CONDENSER": [
+      "6, 7, 8 - Hole bevelling, connector welding, fitting internal plate, and GMAW C&B",
+      "10, 11 - Tube support, bush fitting, tubesheet fitting and tubesheet welding",
+      "12, 13 - Bracket and attachment welding, copper tube brazing, unit side plate, and base welding",
+      "14 - Tube slotting and expansion"
+    ],
+  },
 
-  "OIL SEPARATOR":[
-    "6, 7 - Hole bevelling and connector welding",
-    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
-    "12 - Bracket and attachment fitting and welding",
-    "15 - Primer painting",
-    "16 - Pneumatic testing",
-    "19 - Top coat painting"
-  ],
+  "PV 2": {
+    "EVAPORATOR": [
+      "6, 7 - Hole bevelling and connector welding",
+      "12 - Bracket and attachment welding, copper tube brazing",
+      "8A - Internal plate assembly",
+      "8B - Internal plate fitting",
+      "10 - Tube support, bush fitting and tubesheet fitting",
+      "11 - Tubesheet welding",
+      "14A - Tube slotting",
+      "14B - Tube expansion"
+    ],
 
-  "ECONOMIZER":[
-    "6, 7 - Hole bevelling and connector welding",
-    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
-    "12 - Bracket and attachment fitting and welding",
-    "15 - Primer painting",
-    "16 - Pneumatic testing",
-    "19 - Top coat painting"
-  ]
-}
+    "CONDENSER": [
+      "6, 7, 8, 10 - Hole bevelling, connector welding, internal plate assembly and fitting, tube support, bush fitting, and tubesheet fitting",
+      "11 - Tubesheet welding",
+      "12 - Bracket and attachment welding, copper tube brazing",
+      "14A - Tube slotting",
+      "14B - Tube expansion"
+    ],
+
+  },
+
+  "Sub Assy": {
+    "ECONOMIZER": [
+      "6, 7 - Hole bevelling and connector welding",
+      "8, 9, 10, 11 - Internal plate distribution box tube support and bush fitting and welding",
+      "12 - Bracket and attachment fitting and welding",
+    ],
+
+    
+    "OIL SEPARATOR": [
+      "6, 7 - Hole bevelling and connector welding",
+      "8, 9, 10, 11 - Internal plate distribution box tube support and bush fitting and welding",
+      "12 - Bracket and attachment fitting and welding",
+    ]
+  },
+
+   "Pneumatic": {
+    "EVAPORATOR": [
+      "15 - Primer painting",
+      "16 - Pneumatic testing",
+      "17 - Hydrostatic testing",
+      "18, 19 - Primer painting (weld seam) and top coat painting"
+    ],
+    
+    "CONDENSER": [
+      "15 - Primer painting",
+      "16 - Pneumatic testing",
+      "17 - Hydrostatic testing",
+      "18, 19 - Primer painting (weld seam) and top coat painting"
+    ],
+
+    "OIL SEPARATOR": [
+      "15 - Primer painting",
+      "16 - Pneumatic testing",
+      "18, 19 - Primer painting (weld seam) and top coat painting"
+    ],
+
+    "ECONOMIZER": [
+      "15 - Primer painting",
+      "16 - Pneumatic testing",
+      "18, 19 - Primer painting (weld seam) and top coat painting"
+    ]
+  }
+};
 
 // CHILLER -> processes
 export const PROCESS_BY_CHILLER = {
-  "AIR-COOLED": [
-    "Piping shop",
-  ],
-  "WATER-COOLED": [
-    "Piping shop",
+  "Piping Shop": {
+    "AIR-COOLED": [
+      "Piping Shop"
+    ],
+
+    "WATER-COOLED":[
+      "Piping Shop"
+    ]
+  },
+
+  "WC 1": {
+    "WATER-COOLED": [
+      "Major components assembly",
+      "Steel pipe welding",
+      "Copper pipe brazing",
+      "Control and starter box wiring"
+    ]
+  },
+
+  "WC 2": {
+    "WATER-COOLED": [
+      "Major components assembly",
+      "Steel pipe welding",
+      "Copper pipe brazing",
+      "Control and starter box wiring"
+    ]
+  },
+
+   "AC 1": {
+    "AIR-COOLED": [
+      "Major components assembly",
+      "Steel pipe welding",
+      "Copper pipe brazing",
+      "Control and starter box wiring"
+    ]
+  },
+
+   "AC 2": {
+    "AIR-COOLED": [
+      "Major components assembly",
+      "Steel pipe welding",
+      "Copper pipe brazing",
+      "Control and starter box wiring"
+    ]
+  },
+
+  "Insulation 1": {
+    "AIR-COOLED": [
+      "Insulation 1",
+      "Insulation 2"
+    ],
+
+    "WATER-COOLED": [
+      "Insulation 1",
+      "Insulation 2"
+    ]
+  },
+
+  "Insulation 2": {
+    "AIR-COOLED": [
+      "Insulation 1",
+      "Insulation 2"
+    ],
+
+    "WATER-COOLED": [
+      "Insulation 1",
+      "Insulation 2"
+    ]
+  },
+
+  "Packing": {
+    "AIR-COOLED":[
+      "Packing"
+    ],
+
+    "WATER-COOLED":[
+      "Packing"
+    ]
+  }
+  
+};
+
+// Allowed vessels to stations
+export const STATION_ALLOWED_VESSELS = {
+  "PV 1": ["EVAPORATOR", "CONDENSER"],
+  "PV 2": ["EVAPORATOR", "CONDENSER"],
+  "Sub Assy": ["ECONOMIZER", "OIL SEPARATOR"],
+  "Pneumatic": [
+    "EVAPORATOR",
+    "CONDENSER",
+    "ECONOMIZER",
+    "OIL SEPARATOR"
   ]
 };
+
+export const STATION_ALLOWED_CHILLER_TYPES = {
+  "Piping Shop": ["AIR-COOLED"],
+  "WC 1": ["WATER-COOLED"],
+  "WC 2": ["WATER-COOLED"],
+  "AC 1": ["WATER-COOLED"],
+  "AC 2": ["WATER-COOLED"],
+  "Insulation 1": ["AIR-COOLED", "WATER-COOLED"],
+  "Insulation 1": ["AIR-COOLED", "WATER-COOLED"],
+  "Packing": ["AIR-COOLED", "WATER-COOLED"],
+};
+
+// A normalized station key to match with state.js (PROCESS_BY_LINE)
+export function getStationKey(employeeData = state.employeeData){
+  const raw = String(
+    employeeData?.station ||
+    employeeData?.lineStation ||
+    employeeData?.processLine ||
+    ""
+  ).trim().toUpperCase();
+
+  const map = {
+    "PV1": "PV 1",
+    "PV 1": "PV 1",
+    "PV2": "PV 2",
+    "PV 2": "PV 2",
+    "SUBASSY" : "Sub Assy",
+    "SUB ASSY": "Sub Assy",
+    "PNEUMATIC": "Pneumatic"
+  };
+
+  return map[raw] || "";
+}
 
 // A normalized vessel type key is produced for process-map lookup.
 export function getVesselTypeKey(v) {
@@ -133,6 +280,35 @@ export function getVesselTypeKey(v) {
     .replaceAll("_", " ");
 }
 
+// Get the station key and vessel key, and identify if the vessel allowed in the particular station
+export function isStationAllowedForVessel(station, vesselType){
+  const stationKey = getStationKey({station});
+  const vesselKey = getVesselTypeKey(vesselType);
+
+  if (!stationKey || !vesselKey) return false;
+
+  const allowed = STATION_ALLOWED_VESSELS[stationKey];
+  if (!allowed) return true; // optional: unknown station assigned to allow
+  
+  return allowed.includes(vesselKey);
+}
+
+// Get the station key and coolingType, and identify if the coolingType is allowed in the particular station
+export function isStationAllowedForChiller(station, coolingType) {
+  const stationKey = getStationKey({ station });
+  const coolKey = getVesselTypeKey(coolingType);
+
+  const allowed = STATION_ALLOWED_CHILLER_TYPES[stationKey];
+  if (!allowed) return false;
+
+  return allowed.includes(coolKey);
+}
+
+export function getAllowedVesselsForStation(station){
+  const stationKey = getStationKey({station});
+  return STATION_ALLOWED_VESSELS[stationKey] || [];
+}
+
 // A vessel type is inferred from the suffix of a PV serial number.
 export function getVesselTypeFromPvSerial(pvSerial = "") {
   const suffix = pvSerial.trim().slice(-1).toUpperCase();
@@ -140,19 +316,32 @@ export function getVesselTypeFromPvSerial(pvSerial = "") {
   return map[suffix] || "UNKNOWN";
 }
 
-// All process names before the current process are returned for ordering checks.
-export function getAllPrevProcessNames(currentProcessName) {
+export function getProcessListForCurrentSelection() {
   const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
 
-  let list = [];
-  if (kind === "PV") {
-    const vesselKey = getVesselTypeKey(state.vesselData?.vesselType);
-    list = PROCESS_BY_PV[vesselKey] || [];
-  } else if (kind === "CHILLER") {
-    const coolKey = getVesselTypeKey(state.vesselData?.coolingType);
-    list = PROCESS_BY_CHILLER[coolKey] || [];
+  if (kind === "PV"){
+    const stationKey = getStationKey(state.employeeData);
+    const vesselKey = getVesselTypeKey(
+      state.vesselData?.vesselType ||
+      state.vesselData?.type ||
+      getVesselTypeFromPvSerial(state.vesselData?.pvSerialNumber || "")
+    )
+
+    return PROCESS_BY_LINE[stationKey]?.[vesselKey] || [];
   }
 
+  if (kind === "CHILLER") {
+    const stationKey = getStationKey(state.employeeData);
+    const coolKey = getVesselTypeKey(state.vesselData?.coolingType);
+    return PROCESS_BY_CHILLER[stationKey]?.[coolKey] || [];
+  }
+
+  return [];
+}
+
+// All process names before the current process are returned for ordering checks.
+export function getAllPrevProcessNames(currentProcessName) {
+  const list = getProcessListForCurrentSelection();
   const idx = list.indexOf(currentProcessName);
   if (idx <= 0) return [];
   return list.slice(0, idx);

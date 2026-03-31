@@ -3,6 +3,23 @@ import { el, setText, showScanStatus, loadProcessesForCurrentUnit } from "./ui.j
 
 /* Html5Qrcode is global */
 
+// To normalize station name to match in the state.js (PROCESS_BY_LINE)
+function normalizeStation (station = ""){
+  const raw = String(station).trim().toUpperCase();
+
+  const map = {
+    "PV1" : "PV 1",
+    "PV 1" : "PV 1",
+    "PV2" : "PV 2",
+    "PV 2" : "PV 2",
+    "SUB ASSY" : "Sub Assy",
+    "SUBASSY" : "Sub Assy",
+    "PNEUMATIC": "Pneumatic"
+  }
+
+  return map[raw] || String(station).trim();
+}
+
 // A CHILLER QR payload is parsed into structured fields.
 function parseChillerQR(text) {
   const p = text.split(";").map(s => s.trim());
@@ -165,7 +182,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
 
     const employeeNumber = (employeeNumberRaw || "").trim();
     const employeeName   = (employeeNameRaw   || "").trim();
-    const station        = (stationRaw        || "").trim();
+    const station        = normalizeStation(stationRaw || "").trim();
 
     state.employeeData = { employeeNumber, employeeName, station, manpower: null };
 

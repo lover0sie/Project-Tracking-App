@@ -1,6 +1,18 @@
 /* Update the UI */
 
-import { state, PROCESS_BY_PV, PROCESS_BY_CHILLER,  getVesselTypeKey, formatMs, getElapsedMs, saveState, clearPersistedState } from "./state.js";
+import { 
+  state, 
+  PROCESS_BY_LINE, 
+  PROCESS_BY_CHILLER,  
+  getVesselTypeKey, 
+  getStationKey,
+  isStationAllowedForVessel,
+  formatMs, 
+  getElapsedMs, 
+  saveState, 
+  clearPersistedState, 
+  isStationAllowedForChiller} 
+from "./state.js";
 
 // A DOM element is retrieved by id.
 export const el = (id) => document.getElementById(id);
@@ -101,11 +113,52 @@ export function loadProcessesForCurrentUnit() {
 
   let list = [];
   if (kind === "PV") {
+    const stationKey = getStationKey(state.employeeData);
     const vesselKey = getVesselTypeKey(state.vesselData?.vesselType);
-    list = PROCESS_BY_PV[vesselKey] || [];
+
+    if (!isStationAllowedForVessel(stationKey,vesselKey)){
+      showScanStatus(`Station ${stationKey} is not allowed for ${vesselKey}`, "err");
+      
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "Invalid station for this vessel";
+      opt.disabled = true;
+      opt.selected = true;
+      sel.appendChild(opt);
+
+      state.selectedProcessName = null;
+      saveState();
+      syncStatusButtons();
+      return; 
+
+    } else {
+      list = PROCESS_BY_LINE[stationKey]?.[vesselKey] || [];
+    }
+
   } else if (kind === "CHILLER") {
+    const stationKey = getStationKey(state.employeeData);
     const coolKey = getVesselTypeKey(state.vesselData?.coolingType);
-    list = PROCESS_BY_CHILLER[coolKey] || [];
+
+    if(!isStationAllowedForChiller(stationKey,coolKey)){
+      showScanStatus(`Station ${stationKey} not allowed for unit ${coolKey}`, "err")
+    
+
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Invalid station for this chiller";
+    opt.disabled = true;
+    opt.selected = true;
+    sel.appendChild(opt);
+
+    state.selectedProcessName = null;
+    saveState();
+    syncStatusButtons();
+    return;
+    
+    } else {
+      list = PROCESS_BY_CHILLER[stationKey]?.[coolKey] || [];
+    }
+
   }
 
   // placeholder (disabled; not a real selection)
@@ -131,6 +184,8 @@ export function loadProcessesForCurrentUnit() {
     state.selectedProcessName = null;
     saveState();
   }
+  
+  syncStatusButtons();
 }
 
 // The stopwatch display is rendered from current elapsed runtime.
@@ -236,6 +291,8 @@ export function resetAllData() {
   state.runRunning = false;
   state.runStartEpoch = 0;
   state.runAccumMs = 0;
+
+  state.selectedProcessName = null;
 
   if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
   renderStopwatch();

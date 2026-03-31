@@ -720,6 +720,30 @@ select{
   color:#111827;
 }
 
+/* back buttons */
+
+.section-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px 0;
+  padding: 8px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.section-back-btn:hover {
+  background: #f9fafb;
+}
+
+.section-back-btn.hidden {
+  display: none;
+}
 
 
 
