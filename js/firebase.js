@@ -5,11 +5,13 @@ import {
   updateDoc,
   doc,
   addDoc,
+  setDoc,       
   serverTimestamp,
   query,
   where,
   getDocs,
-  limit
+  limit,
+  arrayUnion     
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 /* Firebase configuration and database initialization */
@@ -31,9 +33,11 @@ export {
   updateDoc,
   doc,
   addDoc,
+  setDoc,        
   serverTimestamp,
   query,
   where,
   getDocs,
-  limit
+  limit,
+  arrayUnion    
 };

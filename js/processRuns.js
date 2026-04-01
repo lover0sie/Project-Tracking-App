@@ -8,7 +8,9 @@ import {
   doc,
   updateDoc,
   addDoc,
-  serverTimestamp
+  setDoc,
+  serverTimestamp,
+  arrayUnion
 } from "./firebase.js";
 
 import {
@@ -26,6 +28,14 @@ import {
   startStopwatch,
   stopStopwatch
 } from "./ui.js";
+
+// Normalize string
+function normalize(str = "") {
+  return String(str)
+    .replace(/\s+/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+}
 
 
 // The Firestore runs subcollection reference is resolved for the active chiller key.
@@ -229,12 +239,20 @@ export async function startOrResumeRun() {
       processSel.disabled = true;
       state.resumeLocked = true;
 
+    const resumedEpochMs = Date.now();
+
     await updateDoc(runDoc(state.currentRunId), {
       status: "running",
       resumedAt: serverTimestamp(),
-      resumedEpochMs: Date.now(),
+      resumedEpochMs,
       resumedByName: state.employeeData.employeeName,
-      resumedByNumber: state.employeeData.employeeNumber
+      resumedByNumber: state.employeeData.employeeNumber,
+
+      resumes: arrayUnion({
+        resumedAtEpochMs: resumedEpochMs,
+        resumedByName: state.employeeData?.employeeName || "",
+        resumedByNumber: state.employeeData?.employeeNumber || ""
+      })
     });
 
       if (stopBtn) stopBtn.disabled = false;
@@ -296,12 +314,47 @@ export async function startOrResumeRun() {
       partNumber: v.partNumber || null,
       partDescription: v.partDescription || null,
       model: v.model || null,
-      refrigerant: v.refrigerant || null
+      refrigerant: v.refrigerant || null,
+
+      holds:[],
+      resumes:[]
     };
 
+    // Rename the docID in runs to K26D090_PIPINGSHOP_1774587127686
+    const dateStr = getMYDateKey().replace(/-/g, ""); // YYYYMMDD
 
-    const ref = await addDoc(runsCol(), payload);
-    state.currentRunId = ref.id;
+    const kind = (state.vesselData?.qrKind || "").toUpperCase();
+
+    let typePart = "";
+    let serialPart = "";
+
+    if (kind === "PV") {
+      serialPart = state.vesselData?.pvSerialNumber || state.vesselData?.serialNumber;
+      typePart = state.vesselData?.vesselType;
+    } else if (kind === "CHILLER") {
+      serialPart = state.vesselData?.chillerSerialNumber || state.vesselData?.serialNumber;
+      typePart = state.vesselData?.coolingType;
+    }
+
+    const docId = [
+      normalize(serialPart),
+      dateStr,
+      normalize(typePart),
+      normalize(state.employeeData?.station),
+      Date.now()
+    ].join("_");
+
+    const docRef = doc(
+      db,
+      "processRuns",
+      state.chillerSerialNumber,
+      "runs",
+      docId
+    );
+
+    await setDoc(docRef, payload);
+
+    state.currentRunId = docId;
 
     if (stopBtn) stopBtn.disabled = false;
     if (holdBtn) holdBtn.disabled = false;
@@ -373,14 +426,29 @@ export async function holdRunAndReset(reason, remarks, setStepFn, resetAllDataFn
   showOverlayFn?.("Saving (On Hold)...");
 
   try {
+
+    const holdEpochMs = Date.now();
+
     await updateDoc(runDoc(state.currentRunId), {
       status: "on_hold",
-      holdAt: serverTimestamp(),
-      holdEpochMs: Date.now(),
       durationMs,
+
+      // latest snapshot
+      holdAt: serverTimestamp(),
+      holdEpochMs,
       holdReason: reason,
-      remarks
+      remarks: remarks || "",
+
+      // full history
+      holds: arrayUnion({
+        holdAtEpochMs: holdEpochMs,
+        holdReason: reason,
+        remarks: remarks || "",
+        byName: state.employeeData?.employeeName || "",
+        byNumber: state.employeeData?.employeeNumber || ""
+      })
     });
+
 
     showOverlayFn?.("Saved as On Hold", true);
 
