@@ -116,25 +116,25 @@ export const PROCESS_BY_PV = {
 export const PROCESS_BY_CHILLER = {
   "AIR-COOLED": [
     "Piping shop",
-    "Insulation 1",
-    "Insulation 2",
-    "Major components assembly",
-    "Steel pipe welding",
-    "Copper pipe brazing",
-    "Control box and wiring",
-    "Piping insulation",
-    "Packing"
+    "A - Insulation 1",
+    "B - Insulation 2",
+    "C - Major components assembly",
+    "D - Steel pipe welding",
+    "E - Copper pipe brazing",
+    "F - Control box and wiring",
+    "G - Piping insulation",
+    "H - Packing"
   ],
   "WATER-COOLED": [
     "Piping shop",
-    "Insulation 1",
-    "Insulation 2",
-    "Major components assembly",
-    "Steel pipe welding",
-    "Copper pipe brazing",
-    "Control box and wiring",
-    "Piping insulation",
-    "Packing"
+    "A - Insulation 1",
+    "B - Insulation 2",
+    "C - Major components assembly",
+    "D - Steel pipe welding",
+    "E - Copper pipe brazing",
+    "F - Control box and wiring",
+    "G - Piping insulation",
+    "H - Packing"
   ]
 };
 
