@@ -305,11 +305,13 @@ export async function startOrResumeRun() {
       materialNumber: v.materialNumber,
       description: v.description,
       version: v.version,
+      
 
       // vessel QR fields
       qrKind: v.qrKind || "UNKNOWN",
       chillerSerialNumber: v.chillerSerialNumber || null,
       pvSerialNumber: v.pvSerialNumber || null,
+      coolingType: v.coolingType || null,
       vesselType: v.vesselType || null,
       partNumber: v.partNumber || null,
       partDescription: v.partDescription || null,

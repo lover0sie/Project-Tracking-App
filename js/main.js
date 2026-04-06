@@ -30,15 +30,16 @@ import {
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-04-01-01";
+const APP_VERSION = "2026-04-06-01"  
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 
 // Array of reason that require remarks
 const reasonsRequireRemarks = [
   "rework",
-  "item_missing",
-  "item_shortage",
+  "parts_shortage",
+  "parts_ng",
+  "drawing_ng",
   "others"
 ];
 
