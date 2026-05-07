@@ -56,12 +56,7 @@ export const state = {
 // Vessel -> processes
 export const PROCESS_BY_PV = {
   "EVAPORATOR": [
-    "1 - Plasma cutting to bevelling",
-    "2 - Shotblast to rolling",
-    "3 - Longtidunal SAW",
-    "4 - Rerolling",
-    "5 - Circumference SAW (Two shells joining)",
-    "6 - Hole bevelling",
+    "6 - Hole bevelling and fitting",
     "7 - Connector welding",
     "8A - Internal plate assembly",
     "8B - Fitting internal plate",
@@ -81,12 +76,7 @@ export const PROCESS_BY_PV = {
   ],
 
    "CONDENSER": [
-    "1 - Plasma cutting to bevelling",
-    "2 - Shotblast to rolling",
-    "3 - Longtidunal SAW",
-    "4 - Rerolling",
-    "5 - Circumference SAW (Two shells joining)",
-    "6 - Hole bevelling",
+    "6 - Hole bevelling and fitting",
     "7 - Connector welding",
     "8A - Internal plate assembly",
     "8B - Fitting internal plate",
@@ -106,11 +96,6 @@ export const PROCESS_BY_PV = {
   ],
 
   "OIL SEPARATOR":[
-    "1 - Plasma cutting to bevelling",
-    "2 - Shotblast to rolling",
-    "3 - Longtidunal SAW",
-    "4 - Rerolling",
-    "5 - Circumference SAW (Two shells joining)",
     "6, 7 - Hole bevelling and connector welding",
     "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
     "12 - Bracket and attachment fitting and welding",
@@ -120,18 +105,41 @@ export const PROCESS_BY_PV = {
   ],
 
   "ECONOMIZER":[
-    "1 - Plasma cutting to bevelling",
-    "2 - Shotblast to rolling",
-    "3 - Longtidunal SAW",
-    "4 - Rerolling",
-    "5 - Circumference SAW (Two shells joining)",
     "6, 7 - Hole bevelling and connector welding",
     "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
     "12 - Bracket and attachment fitting and welding",
     "15 - Primer painting",
     "16 - Pneumatic testing",
     "19 - Top coat painting"
-  ]
+  ],
+
+   "WATER COVER COND SIDE A":[
+    "6, 7 - Hole bevelling and connector welding",
+    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
+    "12 - Bracket and attachment fitting and welding",
+    "15 - Primer painting",
+  ],
+
+  "WATER COVER COND SIDE B":[
+    "6, 7 - Hole bevelling and connector welding",
+    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
+    "12 - Bracket and attachment fitting and welding",
+    "15 - Primer painting",
+  ],
+
+  "WATER COVER EVAP SIDE A":[
+    "6, 7 - Hole bevelling and connector welding",
+    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
+    "12 - Bracket and attachment fitting and welding",
+    "15 - Primer painting",
+  ],
+
+  "WATER COVER EVAP SIDE B":[
+    "6, 7 - Hole bevelling and connector welding",
+    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
+    "12 - Bracket and attachment fitting and welding",
+    "15 - Primer painting",
+  ],
 }
 
 // CHILLER -> processes
