@@ -30,7 +30,7 @@ import {
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-05-07-01"   
+const APP_VERSION = "2026-05-07-02"
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 

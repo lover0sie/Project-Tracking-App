@@ -56,7 +56,8 @@ export const state = {
 // Vessel -> processes
 export const PROCESS_BY_PV = {
   "EVAPORATOR": [
-    "6 - Hole bevelling and fitting",
+    "6 - Hole bevelling",
+    "6B - Fitting flange and piping",
     "7 - Connector welding",
     "8A - Internal plate assembly",
     "8B - Fitting internal plate",
@@ -76,7 +77,8 @@ export const PROCESS_BY_PV = {
   ],
 
    "CONDENSER": [
-    "6 - Hole bevelling and fitting",
+    "6 - Hole bevelling",
+    "6B - Fitting flange and piping",
     "7 - Connector welding",
     "8A - Internal plate assembly",
     "8B - Fitting internal plate",
