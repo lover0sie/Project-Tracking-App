@@ -148,6 +148,7 @@ export const PROCESS_BY_PV = {
 export const PROCESS_BY_CHILLER = {
   "AIR-COOLED": [
     "Piping shop",
+    "Steel pipe sub-assembly",
     "A - Insulation 1",
     "B - Insulation 2",
     "C - Major components assembly",
@@ -159,6 +160,7 @@ export const PROCESS_BY_CHILLER = {
   ],
   "WATER-COOLED": [
     "Piping shop",
+    "Steel pipe sub-assembly",
     "A - Insulation 1",
     "B - Insulation 2",
     "C - Major components assembly",
