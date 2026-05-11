@@ -148,27 +148,35 @@ export const PROCESS_BY_PV = {
 export const PROCESS_BY_CHILLER = {
   "AIR-COOLED": [
     "Piping shop",
-    "Steel pipe sub-assembly",
-    "A - Insulation 1",
-    "B - Insulation 2",
-    "C - Major components assembly",
-    "D - Steel pipe welding",
-    "E - Copper pipe brazing",
-    "F - Control box and wiring",
-    "G - Piping insulation",
-    "H - Packing"
+    "A1 - Coil assembly (Fan assembly)",
+    "A2 - Coil assembly (Fan wiring)",
+    "B1 - High-side assembly (Compressor assembly)",
+    "B2 - High-side assembly (Evaporator assembly)",
+    "B3 - High-side assembly (Piping assembly)",
+    "B4 - High-side assembly (Wiring base)",
+    "C1 - Brazing assembly (Brazing base)",
+    "C2 - Brazing assembly (Brazing coil)",
+    "D1 - Final assembly (Hoist coil onto base)",
+    "D2 - Final assembly (Final brazing)",
+    "D3 - Final assembly (Accessories assembly)",
+    "D4 - Final assembly (Wiring control box)",
+    "D4 - Final assembly (Panel installation)",
+    "D5 - Final assembly (Pipe insulation)",
+    "H1 - Touch-up",
+    "H2 - Packing"
   ],
   "WATER-COOLED": [
     "Piping shop",
     "Steel pipe sub-assembly",
-    "A - Insulation 1",
-    "B - Insulation 2",
+    "A - Insulation compressor",
+    "B - Insulation evaporator, piping, and economizer/oil separator",
     "C - Major components assembly",
     "D - Steel pipe welding",
     "E - Copper pipe brazing",
     "F - Control box and wiring",
     "G - Piping insulation",
-    "H - Packing"
+    "H1 - Touch-up",
+    "H2 - Packing"
   ]
 };
 
