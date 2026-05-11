@@ -160,10 +160,11 @@ export const PROCESS_BY_CHILLER = {
     "D2 - Final assembly (Final brazing)",
     "D3 - Final assembly (Accessories assembly)",
     "D4 - Final assembly (Wiring control box)",
-    "D4 - Final assembly (Panel installation)",
-    "D5 - Final assembly (Pipe insulation)",
-    "H1 - Touch-up",
-    "H2 - Packing"
+    "D5 - Final assembly (Panel installation)",
+    "D6 - Final assembly (Pipe insulation)",
+    "H1 - Wipe, sanding, polish, paste tape and plastic, and spray paint",
+    "H2 - Remove tape and plastic, attach acrylic, organize wires, attach cap, and paste unit stickers",
+    "H3 - Wrap the unit"
   ],
   "WATER-COOLED": [
     "Piping shop",
@@ -175,8 +176,9 @@ export const PROCESS_BY_CHILLER = {
     "E - Copper pipe brazing",
     "F - Control box and wiring",
     "G - Piping insulation",
-    "H1 - Touch-up",
-    "H2 - Packing"
+    "H1 - Wipe, sanding, polish, paste tape and plastic, and spray paint",
+    "H2 - Remove tape and plastic, attach acrylic, organize wires, attach cap, and paste unit stickers",
+    "H3 - Wrap the unit"
   ]
 };
 
