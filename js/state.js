@@ -50,7 +50,9 @@ export const state = {
   // locks
   startLockedByStatus: false,
   startInFlight: false,
-  statusCheckInFlight: false
+  statusCheckInFlight: false,
+
+  selectedInsulationItemType: null,
 };
 
 // Vessel -> processes
@@ -162,25 +164,47 @@ export const PROCESS_BY_CHILLER = {
     "D4 - Final assembly (Wiring control box)",
     "D5 - Final assembly (Panel installation)",
     "D6 - Final assembly (Pipe insulation)",
-    "H1 - Wipe, sanding, polish, paste tape and plastic, and spray paint",
+    "H1 - Checking item, wipe, sanding, polish, paste tape and plastic, and spray paint",
     "H2 - Remove tape and plastic, attach acrylic, organize wires, attach cap, and paste unit stickers",
     "H3 - Wrap the unit"
   ],
   "WATER-COOLED": [
     "Piping shop",
     "Steel pipe sub-assembly",
-    "A - Insulation compressor",
-    "B - Insulation evaporator, piping, and economizer/oil separator",
     "C - Major components assembly",
     "D - Steel pipe welding",
     "E - Copper pipe brazing",
     "F - Control box and wiring",
-    "G - Piping insulation",
-    "H1 - Wipe, sanding, polish, paste tape and plastic, and spray paint",
+    "H1 - Checking item, wipe, sanding, polish, paste tape and plastic, and spray paint",
     "H2 - Remove tape and plastic, attach acrylic, organize wires, attach cap, and paste unit stickers",
     "H3 - Wrap the unit"
   ]
 };
+
+export const INSULATION_STATIONS = ["Insulation AB", "Insulation G"];
+
+export const INSULATION_PROCESSES = {
+  "Insulation AB": [
+    {
+      processName: "A - Insulation compressor",
+      itemTypes: ["COMPRESSOR"]
+    },
+    {
+      processName: "B - Insulation evaporator and economizer/oil separator",
+      itemTypes: ["EVAPORATOR", "ECONOMIZER", "OIL SEPARATOR"]
+    }
+  ],
+  "Insulation G": [
+    {
+      processName: "G - Piping insulation",
+      itemTypes: ["PIPING"]
+    }
+  ]
+};
+
+export function isInsulationStation(station = "") {
+  return INSULATION_STATIONS.includes(String(station).trim());
+}
 
 // A normalized vessel type key is produced for process-map lookup.
 export function getVesselTypeKey(v) {
@@ -298,7 +322,8 @@ export function saveState() {
     selectedProcessName: state.selectedProcessName,
     chillerSerialNumber: state.chillerSerialNumber,
     activeScope: state.activeScope,
-    savedAtEpochMs: Date.now()
+    savedAtEpochMs: Date.now(),
+    selectedInsulationItemType: state.selectedInsulationItemType,
   };
 
   sessionStorage.setItem(STATE_KEY, JSON.stringify(snapshot));
@@ -357,6 +382,8 @@ export function loadState() {
     state.chillerSerialNumber = s.chillerSerialNumber || null;
     state.activeScope = s.activeScope || null;
 
+    state.selectedInsulationItemType = s.selectedInsulationItemType || null;
+
     if (fromFallback) {
       // Restore into session and current-tab fallback for this lifecycle.
       sessionStorage.setItem(STATE_KEY, JSON.stringify(s));
@@ -370,6 +397,14 @@ export function loadState() {
   } catch (e) {
     console.error("State load failed", e);
     clearPersistedState();
+  }
+}
+
+export function hasEntryTabParam() {
+  try {
+    return new URL(window.location.href).searchParams.has(TAB_ID_QUERY_PARAM);
+  } catch (_) {
+    return false;
   }
 }
 

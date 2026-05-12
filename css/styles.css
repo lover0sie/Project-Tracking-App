@@ -89,6 +89,16 @@ h3{
   letter-spacing:.12em;
 }
 
+.picker-title{
+  display:block;
+  margin:16px 0 10px;
+  font-size:13px;
+  font-weight:700;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+
 .hidden{ display:none !important; }
 
 /* Step indicator (minimal tabs) */
@@ -377,7 +387,8 @@ button.secondary:hover, #clear-data:hover{
 }
 
 /* Optional: center the dropdown too */
-#processSelect {
+#processSelect,
+#insulationItemSelect {
   width: 100%;
   max-width: 320px;
   margin: 8px auto 6px;

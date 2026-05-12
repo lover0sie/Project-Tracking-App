@@ -17,7 +17,8 @@ import {
   state,
   saveState,
   getMYDateKey,
-  getElapsedMs
+  getElapsedMs,
+  isInsulationStation
 } from "./state.js";
 
 import {
@@ -162,6 +163,76 @@ export function reconnectToRunning(active) {
   return true;
 }
 
+const PV_LINKABLE_INSULATION_ITEMS = [
+  "EVAPORATOR",
+  "ECONOMIZER",
+  "OIL SEPARATOR"
+];
+
+// Find related PV serial number for the item
+async function findRelatedPvForInsulation(insulationItemType) {
+  const itemType = String(insulationItemType || "").trim().toUpperCase();
+
+  if (!PV_LINKABLE_INSULATION_ITEMS.includes(itemType)) {
+    return null;
+  }
+
+  const q = query(
+    runsCol(),
+    where("qrKind", "==", "PV"),
+    where("vesselType", "==", itemType),
+    limit(1)
+  );
+
+  const snap = await getDocs(q);
+
+  if (snap.empty) return null;
+
+  return snap.docs[0].data();
+}
+
+export async function resolveRunIdentity(v, station, insulationItemType = "") {
+  const itemType =
+    isInsulationStation(station) &&
+    v?.qrKind === "CHILLER"
+      ? String(insulationItemType || "").trim().toUpperCase()
+      : "";
+
+  const relatedPv = await findRelatedPvForInsulation(itemType);
+
+  const serialNumber =
+    relatedPv?.pvSerialNumber ||
+    relatedPv?.serialNumber ||
+    (
+      itemType
+        ? `${v.chillerSerialNumber}_${itemType}`
+        : v.serialNumber
+    );
+
+  const finalPvSerialNumber =
+    relatedPv?.pvSerialNumber ||
+    relatedPv?.serialNumber ||
+    v.pvSerialNumber ||
+    null;
+
+  const finalVesselType =
+    relatedPv?.vesselType ||
+    (
+      PV_LINKABLE_INSULATION_ITEMS.includes(itemType)
+        ? itemType
+        : v.vesselType
+    ) ||
+    null;
+
+  return {
+    insulationItemType: itemType,
+    relatedPv,
+    serialNumber,
+    finalPvSerialNumber,
+    finalVesselType
+  };
+}
+
 // A run is started, resumed, or blocked based on current Firestore and UI state.
 export async function startOrResumeRun() {
   if (!state.chillerSerialNumber) {
@@ -186,9 +257,27 @@ export async function startOrResumeRun() {
   syncStatusButtons();
 
   try {
-    const serialNumber = state.vesselData.serialNumber;
+    const v = state.vesselData;
     const station = state.employeeData.station;
     const runDate = getMYDateKey();
+
+    const selectedInsulationItemType = (el("insulationItemSelect")?.value || "").trim();
+
+    if (
+      isInsulationStation(station) &&
+      v.qrKind === "CHILLER" &&
+      !selectedInsulationItemType
+    ) {
+      return showScanStatus("Please select insulation item before starting.", "err");
+    }
+
+    const {
+      insulationItemType,
+      relatedPv,
+      serialNumber,
+      finalPvSerialNumber,
+      finalVesselType
+    } = await resolveRunIdentity(v, station, selectedInsulationItemType);
 
     // 1) Block if already running
     const active = await findActiveRun(serialNumber, station, processName);
@@ -196,24 +285,24 @@ export async function startOrResumeRun() {
       const lastEmp = String(active.resumedByNumber || active.startedByNumber || "").trim();
       const me = String(state.employeeData.employeeNumber || "").trim();
 
-      //  Running by YOU -> reconnect and show elapsed
       if (lastEmp && lastEmp === me) {
         reconnectToRunning(active);
         return;
       }
 
-      //  Running by someone else -> show info + block Start
       state.currentRunId = active.id;
       state.startLockedByStatus = true;
-      state.resumeLocked = false; // allow selecting other processes
+      state.resumeLocked = false;
 
       const whoName = active.resumedByName || active.startedByName || "Unknown";
-      const whoNo   = active.resumedByNumber || active.startedByNumber || "-";
-      const verb    = active.resumedByName ? "Resumed by" : "Started by";
+      const whoNo = active.resumedByNumber || active.startedByNumber || "-";
+      const verb = active.resumedByName ? "Resumed by" : "Started by";
 
-      // IMPORTANT: do NOT zero out timer here. Just show 00:00:00 by not running it.
       state.runRunning = false;
-      if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
+      if (state.runTimer) {
+        clearInterval(state.runTimer);
+        state.runTimer = null;
+      }
       state.runStartEpoch = 0;
       state.runAccumMs = 0;
 
@@ -225,35 +314,35 @@ export async function startOrResumeRun() {
       return;
     }
 
-    // 2) Resume first if UI already loaded an on-hold run
+    // 2) Resume loaded on-hold run
     if (state.resumeRunStatus === "on_hold" && state.currentRunId) {
       startBtn.textContent = "Starting...";
       showScanStatus("Resuming process...", "info");
-      
-      // arm auto-hold for this resumed run
+
       state.autoHoldSent = false;
 
       if (state.resumeProcessName && processSel.value !== state.resumeProcessName) {
         processSel.value = state.resumeProcessName;
       }
+
       processSel.disabled = true;
       state.resumeLocked = true;
 
-    const resumedEpochMs = Date.now();
+      const resumedEpochMs = Date.now();
 
-    await updateDoc(runDoc(state.currentRunId), {
-      status: "running",
-      resumedAt: serverTimestamp(),
-      resumedEpochMs,
-      resumedByName: state.employeeData.employeeName,
-      resumedByNumber: state.employeeData.employeeNumber,
+      await updateDoc(runDoc(state.currentRunId), {
+        status: "running",
+        resumedAt: serverTimestamp(),
+        resumedEpochMs,
+        resumedByName: state.employeeData.employeeName,
+        resumedByNumber: state.employeeData.employeeNumber,
 
-      resumes: arrayUnion({
-        resumedAtEpochMs: resumedEpochMs,
-        resumedByName: state.employeeData?.employeeName || "",
-        resumedByNumber: state.employeeData?.employeeNumber || ""
-      })
-    });
+        resumes: arrayUnion({
+          resumedAtEpochMs: resumedEpochMs,
+          resumedByName: state.employeeData?.employeeName || "",
+          resumedByNumber: state.employeeData?.employeeNumber || ""
+        })
+      });
 
       if (stopBtn) stopBtn.disabled = false;
       if (holdBtn) holdBtn.disabled = false;
@@ -264,7 +353,7 @@ export async function startOrResumeRun() {
       return;
     }
 
-    // 3) If not loaded yet, check DB for ON HOLD and load it
+    // 3) Check DB for ON HOLD
     const onHold = await findOnHoldRun(serialNumber, station, processName);
     if (onHold) {
       applyResumeRunToUI(onHold);
@@ -281,14 +370,10 @@ export async function startOrResumeRun() {
       return;
     }
 
-    // 6) New run
+    // 5) New run
     processSel.disabled = true;
     state.resumeLocked = false;
-
-    // arm auto-hold for this new run
     state.autoHoldSent = false;
-
-    const v = state.vesselData;
 
     const payload = {
       serialNumber,
@@ -301,41 +386,42 @@ export async function startOrResumeRun() {
       manpower: state.employeeData.manpower,
       startAt: serverTimestamp(),
       startEpochMs: Date.now(),
+
       projectName: v.projectName,
       materialNumber: v.materialNumber,
       description: v.description,
       version: v.version,
-      
 
-      // vessel QR fields
       qrKind: v.qrKind || "UNKNOWN",
       chillerSerialNumber: v.chillerSerialNumber || null,
-      pvSerialNumber: v.pvSerialNumber || null,
+      pvSerialNumber: finalPvSerialNumber,
       coolingType: v.coolingType || null,
-      vesselType: v.vesselType || null,
+      vesselType: finalVesselType,
       partNumber: v.partNumber || null,
       partDescription: v.partDescription || null,
       model: v.model || null,
       refrigerant: v.refrigerant || null,
 
-      holds:[],
-      resumes:[]
+      insulationItemType: insulationItemType || null,
+      relatedQrKind: relatedPv ? "PV" : (insulationItemType ? "CHILLER" : null),
+      relatedPvSerialNumber: relatedPv?.pvSerialNumber || relatedPv?.serialNumber || null,
+
+      holds: [],
+      resumes: []
     };
 
-    // Rename the docID in runs to K26D090_PIPINGSHOP_1774587127686
-    const dateStr = getMYDateKey().replace(/-/g, ""); // YYYYMMDD
-
-    const kind = (state.vesselData?.qrKind || "").toUpperCase();
+    const dateStr = getMYDateKey().replace(/-/g, "");
+    const kind = (v.qrKind || "").toUpperCase();
 
     let typePart = "";
     let serialPart = "";
 
     if (kind === "PV") {
-      serialPart = state.vesselData?.pvSerialNumber || state.vesselData?.serialNumber;
-      typePart = state.vesselData?.vesselType;
+      serialPart = v.pvSerialNumber || v.serialNumber;
+      typePart = v.vesselType;
     } else if (kind === "CHILLER") {
-      serialPart = state.vesselData?.chillerSerialNumber || state.vesselData?.serialNumber;
-      typePart = state.vesselData?.coolingType;
+      serialPart = serialNumber;
+      typePart = finalVesselType || insulationItemType || v.coolingType;
     }
 
     const docId = [

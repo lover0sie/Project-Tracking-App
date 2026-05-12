@@ -1,6 +1,17 @@
 /* Update the UI */
 
-import { state, PROCESS_BY_PV, PROCESS_BY_CHILLER,  getVesselTypeKey, formatMs, getElapsedMs, saveState, clearPersistedState } from "./state.js";
+import {
+  state,
+  PROCESS_BY_PV,
+  PROCESS_BY_CHILLER,
+  INSULATION_PROCESSES,
+  isInsulationStation,
+  getVesselTypeKey,
+  formatMs,
+  getElapsedMs,
+  saveState,
+  clearPersistedState
+} from "./state.js";
 
 // A DOM element is retrieved by id.
 export const el = (id) => document.getElementById(id);
@@ -99,8 +110,18 @@ export function loadProcessesForCurrentUnit() {
 
   const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
 
+  
+
   let list = [];
-  if (kind === "PV") {
+  const station = state.employeeData?.station || "";
+
+  if (
+    kind === "CHILLER" &&
+    isInsulationStation(station)
+  ) {
+    const insulationList = INSULATION_PROCESSES[station] || [];
+    list = insulationList.map(x => x.processName);
+  } else if (kind === "PV") {
     const vesselKey = getVesselTypeKey(state.vesselData?.vesselType);
     list = PROCESS_BY_PV[vesselKey] || [];
   } else if (kind === "CHILLER") {
@@ -203,7 +224,15 @@ export function syncStatusButtons() {
   stopBtn.disabled = !state.runRunning;
   holdBtn.disabled = !state.runRunning;
 
-  if (procSel) procSel.disabled = state.runRunning || state.resumeLocked;
+  if (procSel) {
+    procSel.disabled = state.runRunning || state.resumeLocked;
+  }
+
+  const insulationSel = el("insulationItemSelect");
+
+  if (insulationSel) {
+    insulationSel.disabled = state.runRunning || state.resumeLocked;
+  }
 }
 
 // The on-hold modal is opened and input fields are reset.
@@ -231,6 +260,11 @@ export function resetAllData() {
 
   state.employeeData = null;
   state.vesselData = null;
+  state.chillerSerialNumber = null;
+  state.activeScope = null;
+  state.selectedProcessName = null;
+  state.selectedInsulationItemType = null;
+  state.currentStep = "employee";
 
   state.currentRunId = null;
   state.runRunning = false;

@@ -130,7 +130,6 @@ export async function stopScanner() {
 
 // A decoded QR value is validated and routed through the step-based flow.
 export async function onScanSuccess(decodedText, setStepFn) {
-  console.log("scan success, currentStep:", state.currentStep);
   const text = decodedText.trim();
 
   if (shouldIgnoreDuplicate(text)) return;

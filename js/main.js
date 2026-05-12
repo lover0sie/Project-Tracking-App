@@ -1,6 +1,15 @@
 /* Main heart of the program */
 
-import { state, loadState, saveState } from "./state.js";
+import {
+  state,
+  loadState,
+  saveState,
+  clearPersistedState,
+  hasEntryTabParam,
+  isInsulationStation,
+  INSULATION_PROCESSES
+} from "./state.js";
+
 import {
   el,
   hideScanStatus,
@@ -26,11 +35,13 @@ import {
   completeRunAndReset,
   holdRunAndReset,
   findActiveRun,
-  reconnectToRunning
+  reconnectToRunning,
+  resolveRunIdentity
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-05-11-03"; 
+const APP_VERSION = "2026-05-11-04"; 
+const KEEP_SESSION_ON_RELOAD_KEY = "qrAppKeepSessionOnReload";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 
@@ -55,6 +66,120 @@ function hideUpdateBanner() {
 function canPromptForRefresh() {
   // Only show refresh prompt when user is not actively running a process
   return !state.runRunning;
+}
+
+function isPageReload() {
+  const nav = performance.getEntriesByType?.("navigation")?.[0];
+  return nav?.type === "reload";
+}
+
+function getSelectedInsulationItemType() {
+  return (el("insulationItemSelect")?.value || "").trim();
+}
+
+function requiresInsulationItemSelection() {
+  return (
+    isInsulationStation(state.employeeData?.station) &&
+    state.vesselData?.qrKind === "CHILLER"
+  );
+}
+
+async function checkCurrentRunStatusForSelection() {
+  if (state.currentStep !== "status") return;
+  if (!state.employeeData || !state.vesselData) return;
+  if (state.runRunning) return;
+
+  const processName = el("processSelect")?.value || "";
+  if (!processName) return;
+
+  const selectedInsulationItemType = getSelectedInsulationItemType();
+  if (requiresInsulationItemSelection() && !selectedInsulationItemType) {
+    hideScanStatus();
+    return;
+  }
+
+  showScanStatus("Checking status...", "info");
+  state.statusCheckInFlight = true;
+  syncStatusButtons();
+
+  state.resumeLocked = false;
+  state.resumeRunStatus = null;
+  state.resumeProcessName = null;
+  state.currentRunId = null;
+  state.runAccumMs = 0;
+  state.runStartEpoch = 0;
+  state.startLockedByStatus = false;
+
+  renderStopwatch();
+  saveState();
+  syncStatusButtons();
+
+  const station = state.employeeData.station;
+
+  try {
+    const { serialNumber } = await resolveRunIdentity(
+      state.vesselData,
+      station,
+      selectedInsulationItemType
+    );
+
+    const active = await findActiveRun(serialNumber, station, processName);
+    if (active) {
+      const lastEmp = String(active.resumedByNumber || active.startedByNumber || "").trim();
+      const me = String(state.employeeData.employeeNumber || "").trim();
+
+      if (lastEmp && lastEmp === me) {
+        reconnectToRunning(active);
+        return;
+      }
+
+      state.runRunning = false;
+      state.runStartEpoch = 0;
+      state.runAccumMs = 0;
+      if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
+
+      state.currentRunId = active.id;
+      state.startLockedByStatus = true;
+      state.resumeLocked = false;
+
+      const whoName = active.resumedByName || active.startedByName || "Unknown";
+      const whoNo = active.resumedByNumber || active.startedByNumber || "-";
+      const verb = active.resumedByName ? "Resumed by" : "Started by";
+
+      showScanStatus(`This process is already RUNNING. ${verb}: ${whoName} (${whoNo}).`, "err");
+
+      renderStopwatch();
+      saveState();
+      syncStatusButtons();
+      return;
+    }
+
+    const onHold = await findOnHoldRun(serialNumber, station, processName);
+    if (onHold) {
+      applyResumeRunToUI(onHold);
+      syncStatusButtons();
+      return;
+    }
+
+    const completed = await hasCompletedProcess(serialNumber, processName);
+    if (completed) {
+      state.startLockedByStatus = true;
+      showScanStatus("This process is already COMPLETED.", "err");
+      syncStatusButtons();
+      return;
+    }
+
+    hideScanStatus();
+    syncStatusButtons();
+  } catch (e) {
+    console.warn("process status check failed:", e);
+    showScanStatus("Failed to check status. Try again.", "err");
+    state.startLockedByStatus = false;
+    syncStatusButtons();
+  } finally {
+    state.statusCheckInFlight = false;
+    syncStatusButtons();
+  }
 }
 
 async function checkForAppUpdate() {
@@ -174,33 +299,7 @@ async function setStep(step) {
     el("statusType") && (el("statusType").innerText = displayType);
   }
 
-    // auto-check on hold for selected process
-    if (state.employeeData && state.vesselData && procSel?.value) {
-      const serialNumber = state.vesselData.serialNumber;
-      const station = state.employeeData.station;
-      const procSel = el("processSelect");
-      const processName = procSel ? procSel.value : null;
-
-      if (processName) {
-        state.statusCheckInFlight = true;
-        syncStatusButtons();
-        try {
-          const onHold = await findOnHoldRun(serialNumber, station, processName);
-          if (onHold) {
-            applyResumeRunToUI(onHold);
-          } else {
-            state.resumeLocked = false;
-            state.resumeRunStatus = null;
-            syncStatusButtons();
-          }
-        } catch (e) {
-          console.warn("On-hold check failed:", e);
-        } finally {
-          state.statusCheckInFlight = false;
-          syncStatusButtons();
-        }
-      }
-    }
+    await checkCurrentRunStatusForSelection();
   }
 
   syncStatusButtons();
@@ -246,6 +345,13 @@ function restoreUIFromState() {
 
 // Initial state hydration and startup synchronization are performed when DOM content is loaded.
 window.addEventListener("DOMContentLoaded", async () => {
+  const keepSessionOnReload = sessionStorage.getItem(KEEP_SESSION_ON_RELOAD_KEY) === "1";
+  sessionStorage.removeItem(KEEP_SESSION_ON_RELOAD_KEY);
+
+  if (hasEntryTabParam() && !keepSessionOnReload && !isPageReload()) {
+    clearPersistedState();
+  }
+
   loadState();
   restoreUIFromState();
   syncStatusButtons();
@@ -395,110 +501,77 @@ el("holdSave")?.addEventListener("click", async () => {
 
 // Process-selection changes are persisted and run status is re-evaluated against Firestore.
 el("processSelect")?.addEventListener("change", async () => {
-  const proc = el("processSelect")
-  if (proc) state.selectedProcessName = proc.value;
-  saveState()
+  const proc = el("processSelect");
 
-
-  syncStatusButtons(); // Start button re-enables as soon as a real process is selected:
-  
-  if (state.currentStep !== "status") return;
-  if (!state.employeeData || !state.vesselData) return;
-  if (state.runRunning) return;
-
-  showScanStatus("Checking status...", "info");
-  state.statusCheckInFlight = true;
-  syncStatusButtons();
-
-  // reset selection state
-  state.resumeLocked = false;
-  state.resumeRunStatus = null;
-  state.resumeProcessName = null;
-  state.currentRunId = null;
-  state.runAccumMs = 0;
-  state.runStartEpoch = 0;
-
-  // unlock completed lock when selecting different process
-  state.startLockedByStatus = false;
-
-  renderStopwatch();
-  saveState();
-  syncStatusButtons();
-
-  const serialNumber = state.vesselData.serialNumber;
-  const station = state.employeeData.station;
-  const processName = el("processSelect").value;
-
-  try {
-    // 0) running
-    const active = await findActiveRun(serialNumber, station, processName);
-    if (active) {
-      const lastEmp = String(active.resumedByNumber || active.startedByNumber || "").trim();
-      const me = String(state.employeeData.employeeNumber || "").trim();
-
-      //  running by YOU -> reconnect and show time
-      if (lastEmp && lastEmp === me) {
-        reconnectToRunning(active);
-        return;
-      }
-
-      //  running by someone else -> block Start, but allow selecting other process
-      state.runRunning = false;
-      state.runStartEpoch = 0;
-      state.runAccumMs = 0;
-      if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
-
-      state.currentRunId = active.id;
-      state.startLockedByStatus = true;
-      state.resumeLocked = false;
-
-      const whoName = active.resumedByName || active.startedByName || "Unknown";
-      const whoNo   = active.resumedByNumber || active.startedByNumber || "-";
-      const verb    = active.resumedByName ? "Resumed by" : "Started by";
-
-      showScanStatus(`This process is already RUNNING. ${verb}: ${whoName} (${whoNo}).`, "err");
-
-      renderStopwatch(); // 00:00:00 by design for "not yours"
-      saveState();
-      syncStatusButtons();
-      return;
-    }
-
-
-    // 1) on_hold
-    const onHold = await findOnHoldRun(serialNumber, station, processName);
-    if (onHold) {
-      applyResumeRunToUI(onHold);
-      syncStatusButtons();
-      return;
-    }
-
-    // 2) completed
-    const completed = await hasCompletedProcess(serialNumber, processName);
-    if (completed) {
-      state.startLockedByStatus = true;
-      showScanStatus("This process is already COMPLETED.", "err");
-      syncStatusButtons();
-      return;
-    }
-
-    // 3) available
-    hideScanStatus();
-    syncStatusButtons();
-
-  } catch (e) {
-    console.warn("processSelect check failed:", e);
-    showScanStatus("Failed to check status. Try again.", "err");
-    state.startLockedByStatus = false;
-    syncStatusButtons();
-  } finally {
-    state.statusCheckInFlight = false;
-    syncStatusButtons();
+  if (proc) {
+    state.selectedProcessName = proc.value;
   }
+
+  // ===== INSULATION ITEM DROPDOWN =====
+  const itemBox = el("insulationItemBox");
+  const itemSel = el("insulationItemSelect");
+
+  state.selectedInsulationItemType = null;
+
+  if (
+    state.vesselData?.qrKind === "CHILLER" &&
+    state.employeeData?.station &&
+    itemBox &&
+    itemSel
+  ) {
+    const station = state.employeeData.station;
+    const processName = proc?.value || "";
+
+    const found =
+      INSULATION_PROCESSES?.[station]?.find(
+        x => x.processName === processName
+      );
+
+    if (found) {
+      itemBox.classList.remove("hidden");
+
+      itemSel.innerHTML =
+        `<option value="">Select item...</option>`;
+
+      found.itemTypes.forEach(type => {
+        const opt = document.createElement("option");
+        opt.value = type;
+        opt.textContent = type;
+        itemSel.appendChild(opt);
+      });
+
+    } else {
+      itemBox.classList.add("hidden");
+
+      itemSel.innerHTML =
+        `<option value="">Select item...</option>`;
+    }
+  }
+  // ===== END INSULATION ITEM DROPDOWN =====
+
+  saveState();
+
+  syncStatusButtons();
+
+  await checkCurrentRunStatusForSelection();
+});
+
+el("insulationItemSelect")?.addEventListener("change", async () => {
+  state.selectedInsulationItemType = getSelectedInsulationItemType() || null;
+  saveState();
+  await checkCurrentRunStatusForSelection();
 });
 
 // Timer rendering is restored when the page is shown again from cache/navigation.
-window.addEventListener("pageshow", () => {
+window.addEventListener("pageshow", async (event) => {
+  if (event.persisted && hasEntryTabParam()) {
+    resetAllData();
+    await setStep("employee");
+    await stopScanner();
+    updateScanButtonUI();
+    return;
+  }
+
   // When page is shown again (Safari BFCache), restore timer tick if needed
   if (state.runRunning && !state.runTimer) {
     state.runTimer = setInterval(renderStopwatch, 200);
@@ -520,6 +593,7 @@ el("completeConfirm")?.addEventListener("click", async () => {
 
 // Refresh button logic
 el("refreshAppBtn")?.addEventListener("click", () => {
+  sessionStorage.setItem(KEEP_SESSION_ON_RELOAD_KEY, "1");
   window.location.reload();
 });
 
