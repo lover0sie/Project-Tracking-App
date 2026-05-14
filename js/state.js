@@ -408,6 +408,24 @@ export function hasEntryTabParam() {
   }
 }
 
+export function hasMatchingTabIdentity() {
+  try {
+    const urlTabId = String(new URL(window.location.href).searchParams.get(TAB_ID_QUERY_PARAM) || "").trim();
+    if (!urlTabId) return false;
+
+    const sessionTabId = String(sessionStorage.getItem(TAB_ID_SESSION_KEY) || "").trim();
+    if (sessionTabId === urlTabId) return true;
+
+    const historyTabId = String(window.history?.state?.[TAB_ID_HISTORY_KEY] || "").trim();
+    if (historyTabId === urlTabId) return true;
+
+    const name = String(window.name || "").trim();
+    return name === `${TAB_NAME_PREFIX}${urlTabId}`;
+  } catch (_) {
+    return false;
+  }
+}
+
 export function clearPersistedState() {
   sessionStorage.removeItem(STATE_KEY);
   try {

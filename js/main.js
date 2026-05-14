@@ -6,6 +6,7 @@ import {
   saveState,
   clearPersistedState,
   hasEntryTabParam,
+  hasMatchingTabIdentity,
   isInsulationStation,
   INSULATION_PROCESSES
 } from "./state.js";
@@ -40,7 +41,7 @@ import {
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-05-11-04"; 
+const APP_VERSION = "2026-05-14-01"; 
 const KEEP_SESSION_ON_RELOAD_KEY = "qrAppKeepSessionOnReload";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
@@ -348,7 +349,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   const keepSessionOnReload = sessionStorage.getItem(KEEP_SESSION_ON_RELOAD_KEY) === "1";
   sessionStorage.removeItem(KEEP_SESSION_ON_RELOAD_KEY);
 
-  if (hasEntryTabParam() && !keepSessionOnReload && !isPageReload()) {
+  // This clears stale saved data only when a copied/old ?tab= link is opened as a new tab.
+  // The same Safari tab keeps its matching tab identity, so background restores are not reset.
+  if (
+    hasEntryTabParam() &&
+    !hasMatchingTabIdentity() &&
+    !keepSessionOnReload &&
+    !isPageReload()
+  ) {
     clearPersistedState();
   }
 
@@ -374,6 +382,7 @@ document.addEventListener("visibilitychange", () => {
     renderStopwatch();
     syncStatusButtons();
   } else {
+    saveState();
     if (state.runTimer) { clearInterval(state.runTimer); state.runTimer = null; }
   }
 });
@@ -563,16 +572,9 @@ el("insulationItemSelect")?.addEventListener("change", async () => {
 });
 
 // Timer rendering is restored when the page is shown again from cache/navigation.
-window.addEventListener("pageshow", async (event) => {
-  if (event.persisted && hasEntryTabParam()) {
-    resetAllData();
-    await setStep("employee");
-    await stopScanner();
-    updateScanButtonUI();
-    return;
-  }
-
-  // When page is shown again (Safari BFCache), restore timer tick if needed
+window.addEventListener("pageshow", () => {
+  // Safari may fire pageshow when the same tab returns from background/BFCache.
+  // The operator should stay on the current workflow step; only the timer/UI are revived.
   if (state.runRunning && !state.runTimer) {
     state.runTimer = setInterval(renderStopwatch, 200);
   }
