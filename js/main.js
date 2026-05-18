@@ -4,11 +4,7 @@ import {
   state,
   loadState,
   saveState,
-  clearPersistedState,
-  hasEntryTabParam,
-  hasMatchingTabIdentity,
   isInsulationStation,
-  hasSavedStateForCurrentTab,
   INSULATION_PROCESSES
 } from "./state.js";
 
@@ -42,8 +38,7 @@ import {
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-05-18-03"
-const KEEP_SESSION_ON_RELOAD_KEY = "qrAppKeepSessionOnReload";
+const APP_VERSION = "2026-05-18-04";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 
@@ -70,11 +65,6 @@ function hideUpdateBanner() {
 function canPromptForRefresh() {
   // Only show refresh prompt when user is not actively running a process
   return !state.runRunning;
-}
-
-function isPageReload() {
-  const nav = performance.getEntriesByType?.("navigation")?.[0];
-  return nav?.type === "reload";
 }
 
 function getSelectedInsulationItemType() {
@@ -318,53 +308,43 @@ async function setStep(step) {
 
 // UI fields are restored from the persisted state snapshot.
 async function restoreUIFromState() {
-  // restore employee UI
   if (state.employeeData) {
     el("empName").innerText = state.employeeData.employeeName || "-";
     el("empNo").innerText = state.employeeData.employeeNumber || "-";
     el("empStation").innerText = state.employeeData.station || "-";
+
     if (state.vesselData) {
-      loadProcessesForCurrentUnit();;
+      loadProcessesForCurrentUnit();
     }
   }
 
-  // restore project UI
   if (state.vesselData) {
     el("projectName").innerText = state.vesselData.projectName || "-";
     el("description").innerText = state.vesselData.description || "-";
     el("materialNumber").innerText = state.vesselData.materialNumber || "-";
     el("serialNumber").innerText = state.vesselData.serialNumber || "-";
-    el("type").innerText = state.vesselData.vesselType || state.vesselData.type || "-";
+    el("type").innerText =
+      state.vesselData.vesselType ||
+      state.vesselData.coolingType ||
+      state.vesselData.type ||
+      "-";
   }
 
   await setStep(state.currentStep);
 
-  // resume stopwatch if running
   renderStopwatch();
+
   if (state.runRunning && !state.runTimer) {
     state.runTimer = setInterval(renderStopwatch, 200);
   }
+
   syncStatusButtons();
 }
 
 // Initial state hydration and startup synchronization are performed when DOM content is loaded.
 window.addEventListener("DOMContentLoaded", async () => {
-  const keepSessionOnReload = sessionStorage.getItem(KEEP_SESSION_ON_RELOAD_KEY) === "1";
-  sessionStorage.removeItem(KEEP_SESSION_ON_RELOAD_KEY);
-
-  // This clears stale saved data only when a copied/old ?tab= link is opened as a new tab.
-  // The same Safari tab keeps its matching tab identity, so background restores are not reset.
-  if (
-    hasEntryTabParam() &&
-    !hasMatchingTabIdentity() &&
-    !hasSavedStateForCurrentTab() &&
-    !keepSessionOnReload &&
-    !isPageReload()
-  ) {
-    clearPersistedState();
-  }
-
   loadState();
+
   await restoreUIFromState();
   syncStatusButtons();
 
@@ -372,7 +352,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   updateScanButtonUI();
 
   await checkForAppUpdate();
-
 });
 
 /* ===== Event listeners ===== */
@@ -599,7 +578,6 @@ el("completeConfirm")?.addEventListener("click", async () => {
 
 // Refresh button logic
 el("refreshAppBtn")?.addEventListener("click", () => {
-  sessionStorage.setItem(KEEP_SESSION_ON_RELOAD_KEY, "1");
   window.location.reload();
 });
 

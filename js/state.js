@@ -184,15 +184,6 @@ export const INSULATION_PROCESSES = {
   ]
 };
 
-export function hasSavedStateForCurrentTab() {
-  try {
-    // Only sessionStorage proves this page lifecycle owns the saved state.
-    // The localStorage fallback may belong to an older copied ?tab= link.
-    return !!sessionStorage.getItem(STATE_KEY);
-  } catch (_) {
-    return false;
-  }
-}
 
 export function isInsulationStation(station = "") {
   return INSULATION_STATIONS.includes(String(station).trim());
@@ -392,31 +383,6 @@ export function loadState() {
   }
 }
 
-export function hasEntryTabParam() {
-  try {
-    return new URL(window.location.href).searchParams.has(TAB_ID_QUERY_PARAM);
-  } catch (_) {
-    return false;
-  }
-}
-
-export function hasMatchingTabIdentity() {
-  try {
-    const urlTabId = String(new URL(window.location.href).searchParams.get(TAB_ID_QUERY_PARAM) || "").trim();
-    if (!urlTabId) return false;
-
-    const sessionTabId = String(sessionStorage.getItem(TAB_ID_SESSION_KEY) || "").trim();
-    if (sessionTabId === urlTabId) return true;
-
-    const historyTabId = String(window.history?.state?.[TAB_ID_HISTORY_KEY] || "").trim();
-    if (historyTabId === urlTabId) return true;
-
-    const name = String(window.name || "").trim();
-    return name === `${TAB_NAME_PREFIX}${urlTabId}`;
-  } catch (_) {
-    return false;
-  }
-}
 
 export function clearPersistedState() {
   sessionStorage.removeItem(STATE_KEY);
@@ -474,7 +440,6 @@ function getTabId() {
     syncTabIdentity(generated);
     return cachedTabId;
   } catch (_) {
-    // Last-resort fallback if window access is restricted for any reason.
     cachedTabId = "default";
     return cachedTabId;
   }
