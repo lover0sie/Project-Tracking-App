@@ -41,7 +41,7 @@ import {
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-05-14-01"; 
+const APP_VERSION = "2026-05-18-01"  
 const KEEP_SESSION_ON_RELOAD_KEY = "qrAppKeepSessionOnReload";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
@@ -52,7 +52,9 @@ const reasonsRequireRemarks = [
   "parts_shortage",
   "parts_ng",
   "drawing_ng",
-  "others"
+  "others",
+  "supplier_machining",
+  "qc_checking"
 ];
 
 // Functions to show updated code 

@@ -117,32 +117,14 @@ export const PROCESS_BY_PV = {
     "19 - Top coat painting"
   ],
 
-   "WATER COVER COND SIDE A":[
-    "6, 7 - Hole bevelling and connector welding",
-    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
-    "12 - Bracket and attachment fitting and welding",
-    "15 - Primer painting",
+   "WATER COVER COND SIDE A AND B":[
+    "6 - Hole bevelling",
+    "7 - Connector welding",
   ],
 
-  "WATER COVER COND SIDE B":[
-    "6, 7 - Hole bevelling and connector welding",
-    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
-    "12 - Bracket and attachment fitting and welding",
-    "15 - Primer painting",
-  ],
-
-  "WATER COVER EVAP SIDE A":[
-    "6, 7 - Hole bevelling and connector welding",
-    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
-    "12 - Bracket and attachment fitting and welding",
-    "15 - Primer painting",
-  ],
-
-  "WATER COVER EVAP SIDE B":[
-    "6, 7 - Hole bevelling and connector welding",
-    "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
-    "12 - Bracket and attachment fitting and welding",
-    "15 - Primer painting",
+  "WATER COVER EVAP SIDE A AND B":[
+    "6 - Hole bevelling",
+    "7 - Connector welding",
   ],
 }
 
