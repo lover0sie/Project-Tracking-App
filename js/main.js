@@ -8,6 +8,7 @@ import {
   hasEntryTabParam,
   hasMatchingTabIdentity,
   isInsulationStation,
+  hasSavedStateForCurrentTab,
   INSULATION_PROCESSES
 } from "./state.js";
 
@@ -41,7 +42,7 @@ import {
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-05-18-01"  
+const APP_VERSION = "2026-05-18-03"
 const KEEP_SESSION_ON_RELOAD_KEY = "qrAppKeepSessionOnReload";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
@@ -316,7 +317,7 @@ async function setStep(step) {
 }
 
 // UI fields are restored from the persisted state snapshot.
-function restoreUIFromState() {
+async function restoreUIFromState() {
   // restore employee UI
   if (state.employeeData) {
     el("empName").innerText = state.employeeData.employeeName || "-";
@@ -336,7 +337,7 @@ function restoreUIFromState() {
     el("type").innerText = state.vesselData.vesselType || state.vesselData.type || "-";
   }
 
-  setStep(state.currentStep);
+  await setStep(state.currentStep);
 
   // resume stopwatch if running
   renderStopwatch();
@@ -356,6 +357,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (
     hasEntryTabParam() &&
     !hasMatchingTabIdentity() &&
+    !hasSavedStateForCurrentTab() &&
     !keepSessionOnReload &&
     !isPageReload()
   ) {
@@ -363,7 +365,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   loadState();
-  restoreUIFromState();
+  await restoreUIFromState();
   syncStatusButtons();
 
   await stopScanner();

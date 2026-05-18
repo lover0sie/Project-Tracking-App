@@ -184,6 +184,16 @@ export const INSULATION_PROCESSES = {
   ]
 };
 
+export function hasSavedStateForCurrentTab() {
+  try {
+    // Only sessionStorage proves this page lifecycle owns the saved state.
+    // The localStorage fallback may belong to an older copied ?tab= link.
+    return !!sessionStorage.getItem(STATE_KEY);
+  } catch (_) {
+    return false;
+  }
+}
+
 export function isInsulationStation(station = "") {
   return INSULATION_STATIONS.includes(String(station).trim());
 }
