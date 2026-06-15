@@ -148,6 +148,7 @@ export const PROCESS_BY_CHILLER = {
     "D5 - Final assembly (Wiring control box)",
     "D6 - Final assembly (Panel installation)",
     "D7 - Final assembly (Pipe insulation)",
+    "G - Piping insulation",
     "H1 - Checking item, wipe, sanding, polish, paste tape and plastic, and spray paint",
     "H2 - Remove tape and plastic, attach acrylic, organize wires, attach cap, and paste unit stickers",
     "H3 - Wrap the unit"
