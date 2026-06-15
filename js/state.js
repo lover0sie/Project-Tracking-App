@@ -159,13 +159,14 @@ export const PROCESS_BY_CHILLER = {
     "D - Steel pipe welding",
     "E - Copper pipe brazing",
     "F - Control box and wiring",
+    "G - Piping insulation",
     "H1 - Checking item, wipe, sanding, polish, paste tape and plastic, and spray paint",
     "H2 - Remove tape and plastic, attach acrylic, organize wires, attach cap, and paste unit stickers",
     "H3 - Wrap the unit"
   ]
 };
 
-export const INSULATION_STATIONS = ["Insulation AB", "Insulation G"];
+export const INSULATION_STATIONS = ["Insulation AB"];
 
 export const INSULATION_PROCESSES = {
   "Insulation AB": [
@@ -178,12 +179,6 @@ export const INSULATION_PROCESSES = {
       itemTypes: ["EVAPORATOR", "ECONOMIZER", "OIL SEPARATOR"]
     }
   ],
-  "Insulation G": [
-    {
-      processName: "G - Piping insulation",
-      itemTypes: ["PIPING"]
-    }
-  ]
 };
 
 
