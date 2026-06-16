@@ -58,13 +58,14 @@ export const state = {
 // Vessel -> processes
 export const PROCESS_BY_PV = {
   "EVAPORATOR": [
-    "6 - Hole bevelling",
+    "6A - Hole bevelling",
     "6B - Fitting flange and piping",
     "7 - Connector welding",
     "8A - Internal plate assembly",
     "8B - Fitting internal plate",
     "8C - GMAW C&B",
-    "9 - Fitting and welding distribution box",
+    "9A - Distribution box assembly",
+    "9B - Fitting and welding distribution box",
     "10 - Tube support, bush fitting, and tube sheet fitting",
     "11 - Tubesheet welding",
     "12 - Bracket and attachment welding, copper tube brazing",
@@ -79,13 +80,12 @@ export const PROCESS_BY_PV = {
   ],
 
    "CONDENSER": [
-    "6 - Hole bevelling",
+    "6A - Hole bevelling",
     "6B - Fitting flange and piping",
     "7 - Connector welding",
     "8A - Internal plate assembly",
     "8B - Fitting internal plate",
     "8C - GMAW C&B",
-    "9 - Fitting and welding distribution box",
     "10 - Tube support, bush fitting, and tube sheet fitting",
     "11 - Tubesheet welding",
     "12 - Bracket and attachment welding, copper tube brazing",
