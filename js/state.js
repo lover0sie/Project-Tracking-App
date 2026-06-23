@@ -155,7 +155,8 @@ export const PROCESS_BY_CHILLER = {
   ],
   "WATER-COOLED": [
     "Piping shop",
-    "Steel pipe sub-assembly",
+    "Steel pipe sub-assembly (Fitting)",
+    "Steel pipe sub-assembly (Welding)",
     "C - Major components assembly",
     "D - Steel pipe welding",
     "E - Copper pipe brazing",
