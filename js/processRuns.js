@@ -165,6 +165,7 @@ export function reconnectToRunning(active) {
 
 const PV_LINKABLE_INSULATION_ITEMS = [
   "EVAPORATOR",
+  "CONDENSER",
   "ECONOMIZER",
   "OIL SEPARATOR"
 ];

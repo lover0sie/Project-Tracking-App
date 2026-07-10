@@ -4,9 +4,13 @@ import {
   state,
   loadState,
   saveState,
-  isInsulationStation,
-  INSULATION_PROCESSES
+  isInsulationStation
 } from "./state.js";
+
+import {
+  INSULATION_ITEM_BY_MODEL,
+  INSULATION_PROCESS_BY_ITEM
+} from "./processList.js";
 
 import {
   el,
@@ -38,7 +42,7 @@ import {
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-07-10-01";
+const APP_VERSION = "2026-07-10-02";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 
@@ -78,6 +82,73 @@ function requiresInsulationItemSelection() {
   );
 }
 
+function getInsulationItemsForModel(model = "") {
+  const modelKey = String(model || "").trim().toUpperCase();
+  if (!modelKey) return [];
+
+  if (INSULATION_ITEM_BY_MODEL[modelKey]) {
+    return INSULATION_ITEM_BY_MODEL[modelKey];
+  }
+
+  const matchedKey = Object.keys(INSULATION_ITEM_BY_MODEL)
+    .sort((a, b) => b.length - a.length)
+    .find(key => modelKey.startsWith(key));
+
+  return matchedKey ? INSULATION_ITEM_BY_MODEL[matchedKey] : [];
+}
+
+function getInsulationProcessForItem(itemType = "") {
+  return INSULATION_PROCESS_BY_ITEM[String(itemType || "").trim().toUpperCase()] || "";
+}
+
+function syncInsulationProcessForItem(itemType = "") {
+  const procSel = el("processSelect");
+  if (!procSel || !requiresInsulationItemSelection()) return;
+
+  const processName = getInsulationProcessForItem(itemType);
+  procSel.value = processName;
+  state.selectedProcessName = processName || null;
+}
+
+function populateInsulationItemsForCurrentModel() {
+  const itemBox = el("insulationItemBox");
+  const itemSel = el("insulationItemSelect");
+  if (!itemBox || !itemSel) return;
+
+  itemSel.innerHTML = `<option value="">Select item...</option>`;
+
+  if (!requiresInsulationItemSelection()) {
+    itemBox.classList.add("hidden");
+    state.selectedInsulationItemType = null;
+    return;
+  }
+
+  const itemTypes = getInsulationItemsForModel(state.vesselData?.model);
+  itemBox.classList.remove("hidden");
+
+  itemTypes.forEach(type => {
+    const opt = document.createElement("option");
+    opt.value = type;
+    opt.textContent = type;
+    itemSel.appendChild(opt);
+  });
+
+  if (
+    state.selectedInsulationItemType &&
+    itemTypes.includes(state.selectedInsulationItemType)
+  ) {
+    itemSel.value = state.selectedInsulationItemType;
+    syncInsulationProcessForItem(state.selectedInsulationItemType);
+  } else {
+    state.selectedInsulationItemType = null;
+    syncInsulationProcessForItem("");
+  }
+
+  if (!itemTypes.length) {
+    showScanStatus("No insulation item list found for this model.", "err");
+  }
+}
+
 async function checkCurrentRunStatusForSelection() {
   if (state.currentStep !== "status") return;
   if (!state.employeeData || !state.vesselData) return;
@@ -88,7 +159,11 @@ async function checkCurrentRunStatusForSelection() {
 
   const selectedInsulationItemType = getSelectedInsulationItemType();
   if (requiresInsulationItemSelection() && !selectedInsulationItemType) {
-    hideScanStatus();
+    if (!getInsulationItemsForModel(state.vesselData?.model).length) {
+      showScanStatus("No insulation item list found for this model.", "err");
+    } else {
+      hideScanStatus();
+    }
     return;
   }
 
@@ -261,6 +336,8 @@ async function setStep(step) {
         state.selectedProcessName = procSel.value || null;
         saveState();
     }
+
+    populateInsulationItemsForCurrentModel();
 
     await stopScanner();
     renderStopwatch();
@@ -499,47 +576,8 @@ el("processSelect")?.addEventListener("change", async () => {
     state.selectedProcessName = proc.value;
   }
 
-  // ===== INSULATION ITEM DROPDOWN =====
-  const itemBox = el("insulationItemBox");
-  const itemSel = el("insulationItemSelect");
-
   state.selectedInsulationItemType = null;
-
-  if (
-    state.vesselData?.qrKind === "CHILLER" &&
-    state.employeeData?.station &&
-    itemBox &&
-    itemSel
-  ) {
-    const station = state.employeeData.station;
-    const processName = proc?.value || "";
-
-    const found =
-      INSULATION_PROCESSES?.[station]?.find(
-        x => x.processName === processName
-      );
-
-    if (found) {
-      itemBox.classList.remove("hidden");
-
-      itemSel.innerHTML =
-        `<option value="">Select item...</option>`;
-
-      found.itemTypes.forEach(type => {
-        const opt = document.createElement("option");
-        opt.value = type;
-        opt.textContent = type;
-        itemSel.appendChild(opt);
-      });
-
-    } else {
-      itemBox.classList.add("hidden");
-
-      itemSel.innerHTML =
-        `<option value="">Select item...</option>`;
-    }
-  }
-  // ===== END INSULATION ITEM DROPDOWN =====
+  populateInsulationItemsForCurrentModel();
 
   saveState();
 
@@ -550,7 +588,9 @@ el("processSelect")?.addEventListener("change", async () => {
 
 el("insulationItemSelect")?.addEventListener("change", async () => {
   state.selectedInsulationItemType = getSelectedInsulationItemType() || null;
+  syncInsulationProcessForItem(state.selectedInsulationItemType);
   saveState();
+  syncStatusButtons();
   await checkCurrentRunStatusForSelection();
 });
 

@@ -2,9 +2,6 @@
 
 import {
   state,
-  PROCESS_BY_PV,
-  PROCESS_BY_CHILLER,
-  INSULATION_PROCESSES,
   isInsulationStation,
   getVesselTypeKey,
   formatMs,
@@ -12,6 +9,12 @@ import {
   saveState,
   clearPersistedState
 } from "./state.js";
+
+import {
+  PROCESS_BY_PV,
+  PROCESS_BY_CHILLER,
+  INSULATION_PROCESSES,
+} from "./processList.js";
 
 // A DOM element is retrieved by id.
 export const el = (id) => document.getElementById(id);
@@ -119,8 +122,7 @@ export function loadProcessesForCurrentUnit() {
     kind === "CHILLER" &&
     isInsulationStation(station)
   ) {
-    const insulationList = INSULATION_PROCESSES[station] || [];
-    list = insulationList.map(x => x.processName);
+    list = INSULATION_PROCESSES[station] || [];
   } else if (kind === "PV") {
     const vesselKey = getVesselTypeKey(state.vesselData?.vesselType);
     list = PROCESS_BY_PV[vesselKey] || [];
@@ -144,7 +146,6 @@ export function loadProcessesForCurrentUnit() {
     sel.appendChild(opt);
   });
 
-  // restore if still valid
   if (state.selectedProcessName && list.includes(state.selectedProcessName)) {
     sel.value = state.selectedProcessName;
   } else {
@@ -210,25 +211,34 @@ export function syncStatusButtons() {
   const stopBtn = el("btnStopProcess");
   const holdBtn = el("btnHoldProcess");
   const procSel = el("processSelect");
+  const insulationSel = el("insulationItemSelect");
   if (!startBtn || !stopBtn || !holdBtn) return;
 
   const noProcessSelected = !procSel?.value;
+  const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
+  const station = state.employeeData?.station || "";
+  const noRequiredInsulationItem =
+    kind === "CHILLER" &&
+    isInsulationStation(station) &&
+    !insulationSel?.value;
   const startDisabled =
     state.runRunning ||
     state.startInFlight ||
     state.statusCheckInFlight ||
     state.startLockedByStatus ||
-    noProcessSelected;
+    noProcessSelected ||
+    noRequiredInsulationItem;
 
   startBtn.disabled = startDisabled;
   stopBtn.disabled = !state.runRunning;
   holdBtn.disabled = !state.runRunning;
 
   if (procSel) {
-    procSel.disabled = state.runRunning || state.resumeLocked;
+    procSel.disabled =
+      state.runRunning ||
+      state.resumeLocked ||
+      (kind === "CHILLER" && isInsulationStation(station));
   }
-
-  const insulationSel = el("insulationItemSelect");
 
   if (insulationSel) {
     insulationSel.disabled = state.runRunning || state.resumeLocked;
@@ -297,6 +307,14 @@ export function resetAllData() {
   if (sel) {
     sel.innerHTML = "";
     sel.disabled = false;
+  }
+
+  const insulationBox = el("insulationItemBox");
+  const insulationSel = el("insulationItemSelect");
+  insulationBox?.classList.add("hidden");
+  if (insulationSel) {
+    insulationSel.innerHTML = `<option value="">Select item...</option>`;
+    insulationSel.disabled = false;
   }
 
   hideScanStatus();
