@@ -217,11 +217,8 @@ export async function resolveRunIdentity(v, station, insulationItemType = "") {
 
   const finalVesselType =
     relatedPv?.vesselType ||
-    (
-      PV_LINKABLE_INSULATION_ITEMS.includes(itemType)
-        ? itemType
-        : v.vesselType
-    ) ||
+    itemType ||
+    v.vesselType ||
     null;
 
   return {
