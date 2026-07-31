@@ -44,6 +44,26 @@ function parsePvQR(text) {
   };
 }
 
+// Wiring Shop QR support is still in progress.
+// function parseWdQR (text) {
+//   const p = text.split(";").map(s => s.trim());
+//   if (p.length !== 8) return null;
+//
+//   const [version, projectName, description, materialNumber, serialNumber, model, coolingType, item] = p;
+//
+//   return {
+//     qrKind: "Wiring Shop",
+//     version,
+//     projectName,
+//     description,
+//     materialNumber,
+//     serialNumber,
+//     model,
+//     coolingType,
+//     item
+//   };
+// }
+
 // The scan button label and style are synchronized with scanner state.
 export function updateScanButtonUI() {
   const btn = el("start-scan");
