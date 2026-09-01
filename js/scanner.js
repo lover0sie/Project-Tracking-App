@@ -208,6 +208,11 @@ export async function onScanSuccess(decodedText, setStepFn) {
 
   // ---- PV QR (REQUIRED) ----
   if (pv) {
+    if (Object.values(pv).some(value => String(value ?? "").toUpperCase().includes("UNKNOWN"))) {
+      showScanStatus("Project QR contains UNKNOWN data. Please scan the QR code again.", "err");
+      return;
+    }
+
     // enforce: must scan PV to work (requirement)
     state.chillerSerialNumber = pv.chillerSerialNumber;
     state.vesselData = {
@@ -237,6 +242,10 @@ export async function onScanSuccess(decodedText, setStepFn) {
 
   // ---- CHILLER QR (optional: allow view only OR block) ----
   if (ch) {
+    if (Object.values(ch).some(value => String(value ?? "").toUpperCase().includes("UNKNOWN"))) {
+      showScanStatus("Project QR contains UNKNOWN data. Please scan the QR code again.", "err");
+      return;
+    }
 
     // Otherwise: allow storing chiller info but keep scope CHILLER
     state.chillerSerialNumber = ch.chillerSerialNumber;
