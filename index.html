@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -12,12 +12,12 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 
-<div id="updateBanner" class="update-banner hidden">
-  <span>A new version of the app is available.</span>
-  <button id="refreshAppBtn" type="button">Refresh</button>
-</div>
-
 <body>
+  <div id="updateBanner" class="update-banner hidden">
+    <span>A new version of the app is available.</span>
+    <button id="refreshAppBtn" type="button">Refresh</button>
+  </div>
+
   <div class="wrap">
     <h2>Project Tracking App</h2>
 
@@ -29,17 +29,17 @@
 
     <div class="stepperSteps">
       <div class="sStep" id="step1">
-        <div class="sDot"><span class="sCheck">✓</span></div>
+        <div class="sDot"><span class="sCheck">&#10003;</span></div>
         <div class="sLbl">QR EMPLOYEE</div>
       </div>
 
       <div class="sStep" id="step2">
-        <div class="sDot"><span class="sCheck">✓</span></div>
+        <div class="sDot"><span class="sCheck">&#10003;</span></div>
         <div class="sLbl">QR PROJECT</div>
       </div>
 
       <div class="sStep" id="step3">
-        <div class="sDot"><span class="sCheck">✓</span></div>
+        <div class="sDot"><span class="sCheck">&#10003;</span></div>
         <div class="sLbl">PROJECT STATUS</div>
       </div>
     </div>
@@ -79,21 +79,39 @@
 
       <button id="to-status" class="secondary">Submit</button>
     </section>
+    <!-- SCREEN 2B: FABRICATION ITEMS -->
+    <section id="screen-items" class="screen hidden">
+      <h3>Fabrication Items</h3>
+      <div class="field"><b>Items Scanned:</b> <span id="itemCount">0</span> / 20</div>
+      <div id="itemList" class="itemList"></div>
+      <div class="actionStack">
+        <button id="btnClearItems" type="button" class="btnWarn">Clear All Items</button>
+        <button id="to-fabrication-status" type="button" class="secondary">Submit</button>
+      </div>
+    </section>
 
     <!-- SCREEN 3 -->
     <section id="screen-status" class="screen hidden">
-      <h3>Description</h3>
+      <button id="btnBackToItems" type="button" class="topBackBtn hidden">&lt; Back</button>
+      <h3 id="statusTitle">Description</h3>
 
       <div class="status-header">
-        <div><span class="status-label">Project</span><span id="statusProject">-</span></div>
-        <div><span class="status-label">Material No</span><span id="statusMaterial">-</span></div>
-        <div><span class="status-label">Serial No</span><span id="statusSerial">-</span></div>
-        <div><span class="status-label">Type</span><span id="statusType">-</span></div>
+        <div class="unitStatusField"><span class="status-label">Project</span><span id="statusProject">-</span></div>
+        <div class="unitStatusField"><span class="status-label">Material No</span><span id="statusMaterial">-</span></div>
+        <div class="unitStatusField"><span class="status-label">Serial No</span><span id="statusSerial">-</span></div>
+        <div class="unitStatusField"><span class="status-label">Type</span><span id="statusType">-</span></div>
+        <div class="fabStatusField hidden"><span class="status-label">Employee</span><span id="statusEmployee">-</span></div>
+        <div class="fabStatusField hidden"><span class="status-label">Employee No</span><span id="statusEmpNo">-</span></div>
         <div><span class="status-label">Station</span><span id="statusStation">-</span></div>
         <div><span class="status-label">Manpower</span><span id="statusManpower">-</span></div>
-        
+        <div class="fabStatusField hidden"><span class="status-label">Total Items</span><span id="statusTotalItems">-</span></div>
+        <div class="fabStatusField hidden"><span class="status-label">Total Projects</span><span id="statusTotalProjects">-</span></div>
       </div>
 
+      <div id="fabricationSummary" class="groupedWrap screen hidden">
+        <h3 class="groupedTitle">Grouped By Project</h3>
+        <div id="groupedItems"></div>
+      </div>
       <div class="picker-title">Process</div>
       <select id="processSelect"></select>
 
@@ -111,7 +129,7 @@
       
        
       
-    <button id="btnStartProcess">Start</button>
+      <button id="btnStartProcess">Start</button>
       
 
       <!-- Row 2 -->
@@ -188,3 +206,6 @@
 </html>
 
 <!-- Thank you to Najmi-san and Henry-san for ideas during brainstorming session -->
+
+
+

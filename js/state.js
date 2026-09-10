@@ -33,20 +33,17 @@ const TAB_ID_QUERY_PARAM = "tab";
 let cachedTabId = null;
 
 export const state = {
-  // QR scanner
   html5Qr: null,
   scanning: false,
 
   employeeData: null,
 
-   // NEW / clarified:
-  chillerSerialNumber: null,     // e.g. K26C088 (parent key)
-  vesselData: null,              // the currently scanned "project QR" (PV or CHILLER)
-  activeScope: null,             // "PV" | "CHILLER" (based on last scanned project QR)
+  chillerSerialNumber: null,
+  vesselData: null,
+  activeScope: null,
 
   selectedProcessName: null,
 
-  // Process run state
   currentRunId: null,
   runStartEpoch: 0,
   runTimer: null,
@@ -54,34 +51,41 @@ export const state = {
   runAccumMs: 0,
   scanStatusTimeout: null,
 
-  // Steps: "employee" -> "project" -> "status"
   currentStep: "employee",
 
-  // duplicate scan guard
   lastDecodedText: "",
   lastDecodedAt: 0,
 
-  // local storage
   stateEnabled: true,
 
-  // resume states
   resumeLocked: false,
-  resumeRunStatus: null, // "on_hold" | null
+  resumeRunStatus: null,
   resumeProcessName: null,
 
-  // locks
   startLockedByStatus: false,
   startInFlight: false,
   statusCheckInFlight: false,
 
   selectedInsulationItemType: null,
+
+  scannedItems: [],
+  activeBatchSessionId: null,
+  activeRunDocs: [],
+  currentStatus: "idle"
 };
 
 export function isInsulationStation(station = "") {
   return INSULATION_STATIONS.includes(String(station).trim());
 }
 
-// A normalized vessel type key is produced for process-map lookup.
+export function isFabricationStation(station = "") {
+  return String(station || "").trim().toUpperCase() === "FABRICATION";
+}
+
+export function isFabricationMode() {
+  return isFabricationStation(state.employeeData?.station);
+}
+
 export function getVesselTypeKey(v) {
   const raw =
     (typeof v === "string")
@@ -94,14 +98,12 @@ export function getVesselTypeKey(v) {
     .replaceAll("_", " ");
 }
 
-// A vessel type is inferred from the suffix of a PV serial number.
 export function getVesselTypeFromPvSerial(pvSerial = "") {
   const suffix = pvSerial.trim().slice(-1).toUpperCase();
   const map = { E: "EVAPORATOR", C: "CONDENSER", J: "ECONOMIZER", Y: "OIL SEPARATOR" };
   return map[suffix] || "UNKNOWN";
 }
 
-// All process names before the current process are returned for ordering checks.
 export function getAllPrevProcessNames(currentProcessName) {
   const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
 
@@ -119,7 +121,6 @@ export function getAllPrevProcessNames(currentProcessName) {
   return list.slice(0, idx);
 }
 
-// A Malaysia-local date key is generated in YYYY-MM-DD format.
 export function getMYDateKey(d = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kuala_Lumpur",
@@ -134,7 +135,18 @@ export function getMYDateKey(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
-// The current Malaysia day range is returned as start/end Date objects.
+export function getMYCompactDateKey(d = new Date()) {
+  return getMYDateKey(d).replace(/-/g, "");
+}
+
+export function normalizeRunIdPart(value = "", whitespaceReplacement = "") {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, whitespaceReplacement)
+    .replace(/[^A-Z0-9_\-]/g, "");
+}
+
 export function getMYDayRange() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -155,7 +167,6 @@ export function getMYDayRange() {
   return { start, end, myDateStr };
 }
 
-// Repeated scans within a short window are detected and filtered.
 export function shouldIgnoreDuplicate(text, windowMs = 1200) {
   const now = Date.now();
   const same = text === state.lastDecodedText && (now - state.lastDecodedAt) < windowMs;
@@ -164,7 +175,6 @@ export function shouldIgnoreDuplicate(text, windowMs = 1200) {
   return same;
 }
 
-// Elapsed milliseconds are formatted into HH:MM:SS text.
 export function formatMs(ms) {
   const totalSec = Math.floor(ms / 1000);
   const h = Math.floor(totalSec / 3600);
@@ -173,13 +183,11 @@ export function formatMs(ms) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-// Total elapsed runtime is computed from accumulated and active stopwatch state.
 export function getElapsedMs() {
   if (!state.runRunning) return state.runAccumMs;
   return state.runAccumMs + (Date.now() - state.runStartEpoch);
 }
 
-// A session snapshot of important runtime state is persisted.
 export function saveState() {
   if (!state.stateEnabled) return;
 
@@ -199,12 +207,14 @@ export function saveState() {
     activeScope: state.activeScope,
     savedAtEpochMs: Date.now(),
     selectedInsulationItemType: state.selectedInsulationItemType,
+    scannedItems: state.scannedItems,
+    activeBatchSessionId: state.activeBatchSessionId,
+    activeRunDocs: state.activeRunDocs,
+    currentStatus: state.currentStatus
   };
 
   sessionStorage.setItem(STATE_KEY, JSON.stringify(snapshot));
 
-  // iOS Safari can evict background tabs and lose sessionStorage.
-  // Keep a short-lived per-tab localStorage fallback to restore workflow step and scanned data.
   try {
     localStorage.setItem(getFallbackStorageKey(), JSON.stringify(snapshot));
   } catch (_) {
@@ -212,7 +222,6 @@ export function saveState() {
   }
 }
 
-// A saved session snapshot is restored into live runtime state.
 export function loadState() {
   let raw = sessionStorage.getItem(STATE_KEY);
   let fromFallback = false;
@@ -236,14 +245,11 @@ export function loadState() {
     state.currentStep = s.currentStep || "employee";
     state.employeeData = s.employeeData || null;
     state.vesselData = s.vesselData || null;
-
     state.currentRunId = s.currentRunId || null;
-
     state.runAccumMs = Number(s.runAccumMs || 0);
     state.runRunning = !!s.runRunning;
     state.runStartEpoch = Number(s.runStartEpoch || 0);
 
-    // Repair corrupted running state (prevents 492394:40:08 bug)
     if (state.runRunning && state.runStartEpoch <= 0) {
       state.runRunning = false;
       state.runStartEpoch = 0;
@@ -252,15 +258,16 @@ export function loadState() {
     state.resumeLocked = !!s.resumeLocked;
     state.resumeRunStatus = s.resumeRunStatus || null;
     state.resumeProcessName = s.resumeProcessName || null;
-
     state.selectedProcessName = s.selectedProcessName || null;
     state.chillerSerialNumber = s.chillerSerialNumber || null;
     state.activeScope = s.activeScope || null;
-
     state.selectedInsulationItemType = s.selectedInsulationItemType || null;
+    state.scannedItems = Array.isArray(s.scannedItems) ? s.scannedItems : [];
+    state.activeBatchSessionId = s.activeBatchSessionId || null;
+    state.activeRunDocs = Array.isArray(s.activeRunDocs) ? s.activeRunDocs : [];
+    state.currentStatus = s.currentStatus || "idle";
 
     if (fromFallback) {
-      // Restore into session and current-tab fallback for this lifecycle.
       sessionStorage.setItem(STATE_KEY, JSON.stringify(s));
       try {
         localStorage.setItem(getFallbackStorageKey(), JSON.stringify(s));
@@ -268,13 +275,11 @@ export function loadState() {
         // Ignore storage quota/private-mode errors.
       }
     }
-
   } catch (e) {
     console.error("State load failed", e);
     clearPersistedState();
   }
 }
-
 
 export function clearPersistedState() {
   sessionStorage.removeItem(STATE_KEY);
@@ -365,3 +370,4 @@ function syncTabIdentity(tabId) {
     // Ignore window access failures.
   }
 }
+

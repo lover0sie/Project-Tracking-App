@@ -43,7 +43,8 @@ export const PROCESS_BY_PV = {
   ],
 
   "OIL SEPARATOR":[
-    "6, 7 - Hole bevelling and connector welding",
+    "6 - Hole bevelling",
+    "7 - Connector welding",
     "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
     "12 - Bracket and attachment fitting and welding",
     "15 - Primer painting",
@@ -52,7 +53,8 @@ export const PROCESS_BY_PV = {
   ],
 
   "ECONOMIZER":[
-    "6, 7 - Hole bevelling and connector welding",
+    "6 - Hole bevelling",
+    "7 - Connector welding",
     "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
     "12 - Bracket and attachment fitting and welding",
     "15 - Primer painting",
@@ -147,3 +149,11 @@ export const INSULATION_ITEM_BY_MODEL = {
     "HT": ["EVAPORATOR", "CONDENSER"],
     "ZUWS": ["EVAPORATOR", "CONDENSER", "ECONOMIZER", "OIL SEPARATOR", "COMPRESSOR"]
 }
+
+export const FABRICATION_PROCESSES = [
+  "1 - Plasma cutting to bevelling",
+  "2 - Shotblast to rolling",
+  "3 - Longitudinal SAW",
+  "4 - Rerolling",
+  "5 - Circumference SAW (Two shells joining)"
+];

@@ -17,8 +17,10 @@ import {
   state,
   saveState,
   getMYDateKey,
+  getMYCompactDateKey,
   getElapsedMs,
-  isInsulationStation
+  isInsulationStation,
+  normalizeRunIdPart
 } from "./state.js";
 
 import {
@@ -29,15 +31,6 @@ import {
   startStopwatch,
   stopStopwatch
 } from "./ui.js";
-
-// Normalize string
-function normalize(str = "") {
-  return String(str)
-    .replace(/\s+/g, "")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toUpperCase();
-}
-
 
 // The Firestore runs subcollection reference is resolved for the active chiller key.
 function runsCol() {
@@ -408,7 +401,7 @@ export async function startOrResumeRun() {
       resumes: []
     };
 
-    const dateStr = getMYDateKey().replace(/-/g, "");
+    const dateStr = getMYCompactDateKey();
     const kind = (v.qrKind || "").toUpperCase();
 
     let typePart = "";
@@ -423,10 +416,10 @@ export async function startOrResumeRun() {
     }
 
     const docId = [
-      normalize(serialPart),
+      normalizeRunIdPart(serialPart),
       dateStr,
-      normalize(typePart),
-      normalize(state.employeeData?.station),
+      normalizeRunIdPart(typePart),
+      normalizeRunIdPart(state.employeeData?.station),
       Date.now()
     ].join("_");
 

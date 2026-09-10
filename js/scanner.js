@@ -1,70 +1,44 @@
-import { state, saveState, shouldIgnoreDuplicate } from "./state.js";
-import { el, setText, showScanStatus, loadProcessesForCurrentUnit } from "./ui.js";
+/* Camera scanning is started, stopped, and routed into QR-driven state and UI updates. */
+
+import { state, saveState, shouldIgnoreDuplicate, isFabricationMode } from "./state.js";
+import {
+  parseChillerQR,
+  parseEmployeeQR,
+  parseFabricationItemQR,
+  parsePvQR
+} from "./qr.js";
+import { el, setText, showScanStatus, loadProcessesForCurrentUnit, renderFabricationItemList } from "./ui.js";
 
 /* Html5Qrcode is global */
 
-// A CHILLER QR payload is parsed into structured fields.
-function parseChillerQR(text) {
-  const p = text.split(";").map(s => s.trim());
-  if (p.length !== 8) return null;
-
-  const [version, projectName, description, materialNumber, chillerSerialNumber, model, coolingType, refrigerant] = p;
-
-  return {
-    qrKind: "CHILLER",
-    version, 
-    projectName, 
-    description, 
-    materialNumber,
-    chillerSerialNumber, 
-    model, 
-    coolingType, 
-    refrigerant
-  };
+function isDuplicateFabricationItem(newItem) {
+  return state.scannedItems.some(item =>
+    String(item.itemID).trim().toUpperCase() === String(newItem.itemID).trim().toUpperCase()
+  );
 }
 
-// A PV QR payload is parsed into structured fields.
-function parsePvQR(text) {
-  const p = text.split(";").map(s => s.trim());
-  if (p.length !== 9) return null;
+function handleFabricationItemScan(text) {
+  try {
+    if (state.scannedItems.length >= 20) {
+      showScanStatus("Maximum 20 items per batch session.", "err");
+      return;
+    }
 
-  const [version, projectName, partNumber, materialNumber, chillerSerialNumber, pvSerialNumber, vesselType, model, refrigerant] = p;
+    const item = parseFabricationItemQR(text);
+    if (isDuplicateFabricationItem(item)) {
+      showScanStatus(`Duplicate blocked: ${item.itemID}`, "err");
+      return;
+    }
 
-  return {
-    qrKind: "PV",
-    version, 
-    projectName, 
-    partNumber, 
-    materialNumber,
-    chillerSerialNumber,
-    pvSerialNumber,
-    vesselType, 
-    model, 
-    refrigerant
-  };
+    state.scannedItems.push(item);
+    renderFabricationItemList();
+    saveState();
+    showScanStatus(`Added item ${item.itemID}`, "ok", 1500);
+  } catch (err) {
+    showScanStatus(err.message || "Invalid fabrication item QR.", "err");
+  }
 }
 
-// Wiring Shop QR support is still in progress.
-// function parseWdQR (text) {
-//   const p = text.split(";").map(s => s.trim());
-//   if (p.length !== 8) return null;
-//
-//   const [version, projectName, description, materialNumber, serialNumber, model, coolingType, item] = p;
-//
-//   return {
-//     qrKind: "Wiring Shop",
-//     version,
-//     projectName,
-//     description,
-//     materialNumber,
-//     serialNumber,
-//     model,
-//     coolingType,
-//     item
-//   };
-// }
-
-// The scan button label and style are synchronized with scanner state.
 export function updateScanButtonUI() {
   const btn = el("start-scan");
   if (!btn) return;
@@ -80,7 +54,6 @@ export function updateScanButtonUI() {
   }
 }
 
-// The camera scanner is started with back-camera fallback behavior.
 export async function startScanner(onScanSuccessFn) {
   if (state.currentStep === "status") return;
   if (state.scanning) return;
@@ -91,7 +64,6 @@ export async function startScanner(onScanSuccessFn) {
     state.scanning = true;
     updateScanButtonUI();
 
-    // 1) Try back camera
     try {
       await state.html5Qr.start(
         { facingMode: "environment" },
@@ -104,7 +76,6 @@ export async function startScanner(onScanSuccessFn) {
       console.warn("facingMode environment failed, falling back to deviceId...", e);
     }
 
-    // 2) fallback: select a back camera
     const cameras = await Html5Qrcode.getCameras();
     if (!cameras || cameras.length === 0) throw new Error("No camera found.");
 
@@ -118,7 +89,6 @@ export async function startScanner(onScanSuccessFn) {
       (decodedText) => onScanSuccessFn(decodedText),
       () => {}
     );
-
   } catch (err) {
     console.error(err);
     state.scanning = false;
@@ -127,7 +97,6 @@ export async function startScanner(onScanSuccessFn) {
   }
 }
 
-// The camera scanner is stopped and scanner resources are released.
 export async function stopScanner() {
   if (!state.html5Qr) {
     state.scanning = false;
@@ -147,8 +116,6 @@ export async function stopScanner() {
   }
 }
 
-
-// A decoded QR value is validated and routed through the step-based flow.
 export async function onScanSuccess(decodedText, setStepFn) {
   const text = decodedText.trim();
 
@@ -158,68 +125,76 @@ export async function onScanSuccess(decodedText, setStepFn) {
 
   const isEmployee = text.startsWith("EMP;");
 
-  // enforce step order
   if (state.currentStep === "employee" && !isEmployee) {
     showScanStatus("Wrong QR. Please scan EMPLOYEE QR.", "err", 2000);
     return;
   }
-  if (state.currentStep === "project" && isEmployee) {
-    showScanStatus("Wrong QR. Please scan PROJECT QR.", "err", 2000);
-    return;
-  }
+
   if (state.currentStep === "status") {
     showScanStatus("Scanning is disabled on Status page.", "err");
     return;
   }
 
-  // EMPLOYEE QR
   if (isEmployee) {
-    const parts = text.split(";");
-    if (parts.length !== 4) {
+    if (state.currentStep !== "employee") {
+      showScanStatus(isFabricationMode() ? "Wrong QR. Please scan ITEM QR." : "Wrong QR. Please scan PROJECT QR.", "err", 2000);
+      return;
+    }
+
+    let employee;
+    try {
+      employee = parseEmployeeQR(text);
+    } catch {
       showScanStatus("Invalid Employee QR format.", "err");
       return;
     }
 
-    const [, employeeNumberRaw, employeeNameRaw, stationRaw] = parts;
+    state.employeeData = { ...employee, manpower: null };
+    state.scannedItems = [];
+    state.vesselData = null;
+    state.chillerSerialNumber = null;
+    state.activeScope = null;
 
-    const employeeNumber = (employeeNumberRaw || "").trim();
-    const employeeName   = (employeeNameRaw   || "").trim();
-    const station        = (stationRaw        || "").trim();
-
-    state.employeeData = { employeeNumber, employeeName, station, manpower: null };
-
-    setText("empName", employeeName);
-    setText("empNo", employeeNumber);
-    setText("empStation", station);
+    setText("empName", employee.employeeName);
+    setText("empNo", employee.employeeNumber);
+    setText("empStation", employee.station);
 
     const mp = el("manpowerInput");
     if (mp) mp.value = "";
 
     saveState();
-
     showScanStatus("Employee QR code successfully scanned.", "ok");
     await stopScanner();
     return;
   }
 
-    // PROJECT QR
-  const pv = parsePvQR(text);
-  const ch = parseChillerQR(text);
+  if (state.currentStep === "items" || (state.currentStep === "project" && isFabricationMode())) {
+    handleFabricationItemScan(text);
+    return;
+  }
 
-  // ---- PV QR (REQUIRED) ----
+  if (state.currentStep === "project" && isEmployee) {
+    showScanStatus("Wrong QR. Please scan PROJECT QR.", "err", 2000);
+    return;
+  }
+
+  let pv = null;
+  let ch = null;
+
+  try {
+    pv = parsePvQR(text);
+    ch = parseChillerQR(text);
+  } catch (err) {
+    showScanStatus(err.message || "Invalid Project QR format!", "err");
+    return;
+  }
+
   if (pv) {
-    if (Object.values(pv).some(value => String(value ?? "").toUpperCase().includes("UNKNOWN"))) {
-      showScanStatus("Project QR contains UNKNOWN data. Please scan the QR code again.", "err");
-      return;
-    }
-
-    // enforce: must scan PV to work (requirement)
     state.chillerSerialNumber = pv.chillerSerialNumber;
     state.vesselData = {
       ...pv,
-      // unify some UI fields app already uses
-      serialNumber: pv.pvSerialNumber,  // what you show in UI
-      description: pv.partNumber        // what you show as description
+      serialNumber: pv.pvSerialNumber,
+      description: pv.partNumber
     };
     state.activeScope = "PV";
 
@@ -229,10 +204,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
     setText("serialNumber", pv.pvSerialNumber);
     setText("type", pv.vesselType);
 
-    // update process dropdown now that we know vesselType
     loadProcessesForCurrentUnit();
-
-    
     showScanStatus("PV QR code successfully scanned.", "ok");
     state.currentStep = "project";
     saveState();
@@ -240,14 +212,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
     return;
   }
 
-  // ---- CHILLER QR (optional: allow view only OR block) ----
   if (ch) {
-    if (Object.values(ch).some(value => String(value ?? "").toUpperCase().includes("UNKNOWN"))) {
-      showScanStatus("Project QR contains UNKNOWN data. Please scan the QR code again.", "err");
-      return;
-    }
-
-    // Otherwise: allow storing chiller info but keep scope CHILLER
     state.chillerSerialNumber = ch.chillerSerialNumber;
     state.vesselData = { ...ch, serialNumber: ch.chillerSerialNumber };
     state.activeScope = "CHILLER";
@@ -259,7 +224,6 @@ export async function onScanSuccess(decodedText, setStepFn) {
     setText("type", ch.coolingType);
 
     loadProcessesForCurrentUnit();
-
     showScanStatus("Chiller QR code successfully scanned.", "ok");
     state.currentStep = "project";
     saveState();
@@ -269,3 +233,4 @@ export async function onScanSuccess(decodedText, setStepFn) {
 
   showScanStatus("Invalid Project QR format!", "err");
 }
+
