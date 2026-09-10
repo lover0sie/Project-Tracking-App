@@ -43,7 +43,17 @@ export function updateScanButtonUI() {
   const btn = el("start-scan");
   if (!btn) return;
 
-  if (state.scanning) {
+  btn.disabled = state.currentStep === "status" || state.scanStarting || state.scanStopping;
+
+  if (state.scanStarting) {
+    btn.textContent = "Starting Camera...";
+    btn.style.background = "#6b7280";
+    btn.style.color = "#fff";
+  } else if (state.scanStopping) {
+    btn.textContent = "Stopping Camera...";
+    btn.style.background = "#6b7280";
+    btn.style.color = "#fff";
+  } else if (state.scanning) {
     btn.textContent = "Stop Scanning";
     btn.style.background = "#dc2626";
     btn.style.color = "#fff";
@@ -54,23 +64,56 @@ export function updateScanButtonUI() {
   }
 }
 
+function resetScanGuard() {
+  state.lastDecodedText = "";
+  state.lastDecodedAt = 0;
+  state.scanHandling = false;
+}
+
+function createScanSuccessHandler(onScanSuccessFn) {
+  return (decodedText) => {
+    if (state.scanHandling || state.scanStopping) return;
+
+    state.scanHandling = true;
+
+    Promise.resolve(onScanSuccessFn(decodedText))
+      .catch((err) => {
+        console.error("Scan handler failed:", err);
+        showScanStatus("Scan failed. Please try again.", "err");
+      })
+      .finally(() => {
+        if (state.scanning) {
+          state.scanHandling = false;
+        }
+      });
+  };
+}
+
 export async function startScanner(onScanSuccessFn) {
   if (state.currentStep === "status") return;
-  if (state.scanning) return;
+  if (state.scanning || state.scanStarting || state.scanStopping) return;
 
-  if (!state.html5Qr) state.html5Qr = new Html5Qrcode("reader");
+  if (typeof Html5Qrcode === "undefined") {
+    alert("QR scanner library is still loading. Please try again.");
+    return;
+  }
 
   try {
-    state.scanning = true;
+    state.scanStarting = true;
+    resetScanGuard();
     updateScanButtonUI();
+
+    state.html5Qr = new Html5Qrcode("reader");
+    const handleDecodedText = createScanSuccessHandler(onScanSuccessFn);
 
     try {
       await state.html5Qr.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: 250 },
-        (decodedText) => onScanSuccessFn(decodedText),
+        handleDecodedText,
         () => {}
       );
+      state.scanning = true;
       return;
     } catch (e) {
       console.warn("facingMode environment failed, falling back to deviceId...", e);
@@ -86,32 +129,49 @@ export async function startScanner(onScanSuccessFn) {
     await state.html5Qr.start(
       { deviceId: { exact: backCam.id } },
       { fps: 10, qrbox: 250 },
-      (decodedText) => onScanSuccessFn(decodedText),
+      handleDecodedText,
       () => {}
     );
+    state.scanning = true;
   } catch (err) {
     console.error(err);
     state.scanning = false;
-    updateScanButtonUI();
+    state.html5Qr = null;
     alert("Failed to start camera. Check browser permissions.");
+  } finally {
+    state.scanStarting = false;
+    updateScanButtonUI();
   }
 }
 
 export async function stopScanner() {
+  if (state.scanStopping) return;
+
+  state.scanStopping = true;
+  updateScanButtonUI();
+
   if (!state.html5Qr) {
     state.scanning = false;
+    state.scanStarting = false;
+    state.scanStopping = false;
+    resetScanGuard();
     updateScanButtonUI();
     return;
   }
 
+  const scanner = state.html5Qr;
+
   try {
-    if (state.scanning) await state.html5Qr.stop();
-    await state.html5Qr.clear();
+    if (state.scanning) await scanner.stop();
+    await scanner.clear();
   } catch (err) {
     console.warn("Stop scanner error:", err);
   } finally {
     state.scanning = false;
+    state.scanStarting = false;
+    state.scanStopping = false;
     state.html5Qr = null;
+    resetScanGuard();
     updateScanButtonUI();
   }
 }
@@ -208,7 +268,6 @@ export async function onScanSuccess(decodedText, setStepFn) {
     showScanStatus("PV QR code successfully scanned.", "ok");
     state.currentStep = "project";
     saveState();
-    await stopScanner();
     return;
   }
 
@@ -227,7 +286,6 @@ export async function onScanSuccess(decodedText, setStepFn) {
     showScanStatus("Chiller QR code successfully scanned.", "ok");
     state.currentStep = "project";
     saveState();
-    await stopScanner();
     return;
   }
 

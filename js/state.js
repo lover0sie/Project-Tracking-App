@@ -35,6 +35,9 @@ let cachedTabId = null;
 export const state = {
   html5Qr: null,
   scanning: false,
+  scanStarting: false,
+  scanStopping: false,
+  scanHandling: false,
 
   employeeData: null,
 
