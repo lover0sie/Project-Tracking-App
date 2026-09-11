@@ -51,7 +51,7 @@ import {
 } from "./fabricationRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-09-11-02";
+const APP_VERSION = "2026-09-10-01";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 
