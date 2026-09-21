@@ -68,9 +68,6 @@ export const state = {
 
   selectedInsulationItemType: null,
 
-  scannedItems: [],
-  activeBatchSessionId: null,
-  activeRunDocs: [],
   currentStatus: "idle"
 };
 
@@ -207,9 +204,6 @@ export function saveState() {
     activeScope: state.activeScope,
     savedAtEpochMs: Date.now(),
     selectedInsulationItemType: state.selectedInsulationItemType,
-    scannedItems: state.scannedItems,
-    activeBatchSessionId: state.activeBatchSessionId,
-    activeRunDocs: state.activeRunDocs,
     currentStatus: state.currentStatus
   };
 
@@ -262,9 +256,6 @@ export function loadState() {
     state.chillerSerialNumber = s.chillerSerialNumber || null;
     state.activeScope = s.activeScope || null;
     state.selectedInsulationItemType = s.selectedInsulationItemType || null;
-    state.scannedItems = Array.isArray(s.scannedItems) ? s.scannedItems : [];
-    state.activeBatchSessionId = s.activeBatchSessionId || null;
-    state.activeRunDocs = Array.isArray(s.activeRunDocs) ? s.activeRunDocs : [];
     state.currentStatus = s.currentStatus || "idle";
 
     if (fromFallback) {

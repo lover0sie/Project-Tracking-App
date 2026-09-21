@@ -96,104 +96,36 @@ export function parsePvQR(text) {
   };
 }
 
-export function getLaneType(description) {
-  const d = cleanText(description).toLowerCase();
+export function parseFabricationProjectQR(text) {
+  let source = null;
 
-  if (d === "evaporator") return "EVAPORATOR";
-  if (d === "condenser") return "CONDENSER";
-  if (d === "oil separator") return "OIL_SEPARATOR";
-  if (d === "economizer") return "ECONOMIZER";
-
-  return "FABRICATION";
-}
-
-export function parseFabricationItemQR(text) {
-  const raw = cleanText(text);
-  const parts = raw.split(";").map(s => s.trim());
-
-  if (parts.length !== 8) {
-    throw new Error("Invalid item QR format.");
+  try {
+    source = parsePvQR(text) || parseChillerQR(text);
+  } catch (err) {
+    throw err;
   }
 
-  const [
-    version,
-    projectName,
-    item,
-    partNumber,
-    materialNumber,
-    serialNumber,
-    model,
-    refrigerant
-  ] = parts;
-
-  if (
-    !version ||
-    !projectName ||
-    !item ||
-    !partNumber ||
-    !materialNumber ||
-    !serialNumber ||
-    !model ||
-    !refrigerant
-  ) {
-    throw new Error("Item QR contains empty values.");
+  if (!source) {
+    throw new Error("Invalid fabrication QR format. Scan PV or Chiller QR.");
   }
 
-  if (!isVersion(version, "D4")) {
-    throw new Error("Invalid item QR version. Expected D4.");
-  }
-
-  assertNoUnknownWords("Item", parts);
+  const sourceQrKind = source.qrKind;
+  const chillerSerialNumber = source.chillerSerialNumber;
+  const description = sourceQrKind === "PV"
+    ? source.partNumber
+    : source.description;
 
   return {
+    ...source,
     qrKind: "FABRICATION_ITEM",
-    version,
-    projectName,
-    item,
-    description: item,
-    partNumber,
-    materialNumber,
-    serialNumber,
-    chillerSerialNumber: serialNumber,
-    model,
-    refrigerant,
-    itemID: partNumber,
-    laneType: getLaneType(item)
+    sourceQrKind,
+    serialNumber: chillerSerialNumber,
+    chillerSerialNumber,
+    itemID: chillerSerialNumber,
+    item: "Fabrication item",
+    description,
+    partNumber: source.partNumber || source.description || "",
+    type: source.vesselType || source.coolingType || "",
+    laneType: "FABRICATION"
   };
-}
-
-export function groupItemsByChiller(items) {
-  const map = new Map();
-
-  for (const item of items) {
-    const key = item.chillerSerialNumber;
-    if (!map.has(key)) {
-      map.set(key, {
-        chillerSerialNumber: item.chillerSerialNumber,
-        projectName: item.projectName,
-        items: []
-      });
-    }
-    map.get(key).items.push(item);
-  }
-
-  return Array.from(map.values());
-}
-
-export function buildLaneSummary(items) {
-  const summary = {
-    EVAPORATOR: 0,
-    CONDENSER: 0,
-    OIL_SEPARATOR: 0,
-    ECONOMIZER: 0,
-    FABRICATION: 0
-  };
-
-  for (const item of items) {
-    const lane = item.laneType || "FABRICATION";
-    if (summary[lane] == null) summary[lane] = 0;
-    summary[lane] += 1;
-  }
-
-  return summary;
 }

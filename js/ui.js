@@ -18,8 +18,6 @@ import {
   FABRICATION_PROCESSES
 } from "./processList.js";
 
-import { groupItemsByChiller } from "./qr.js";
-
 export const el = (id) => document.getElementById(id);
 
 export function setText(id, value) {
@@ -77,7 +75,7 @@ export function hideSaveOverlay() {
 }
 
 export function updateStepper(step) {
-  const idx = step === "employee" ? 1 : (step === "project" || step === "items") ? 2 : 3;
+  const idx = step === "employee" ? 1 : step === "project" ? 2 : 3;
 
   const s1 = el("step1"), s2 = el("step2"), s3 = el("step3");
   [s1, s2, s3].forEach(x => x && x.classList.remove("done", "current"));
@@ -97,7 +95,7 @@ export function updateStepper(step) {
   if (fill) fill.style.width = (idx === 1 ? 0 : idx === 2 ? 50 : 100) + "%";
 
   const step2Label = el("step2")?.querySelector(".sLbl");
-  if (step2Label) step2Label.textContent = isFabricationMode() ? "QR ITEMS" : "QR PROJECT";
+  if (step2Label) step2Label.textContent = "QR PROJECT";
 }
 
 export function loadProcessesForCurrentUnit() {
@@ -143,91 +141,6 @@ export function loadProcessesForCurrentUnit() {
     state.selectedProcessName = null;
     saveState();
   }
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-export function renderFabricationItemList() {
-  const count = el("itemCount");
-  const list = el("itemList");
-
-  if (count) count.textContent = String(state.scannedItems.length);
-  if (!list) return;
-
-  if (!state.scannedItems.length) {
-    list.innerHTML = `<div class="hint">No items scanned yet.</div>`;
-    return;
-  }
-
-  list.innerHTML = state.scannedItems.map((item, idx) => `
-    <div class="itemCard">
-      <div class="itemCardTop">
-        <div class="itemTitle">${idx + 1}. ${escapeHtml(item.itemID)}</div>
-        <button type="button" class="btnDanger itemRemoveBtn" data-index="${idx}">Remove</button>
-      </div>
-      <div class="itemMeta">
-        <div><b>Project:</b> ${escapeHtml(item.projectName)}</div>
-        <div><b>Serial:</b> ${escapeHtml(item.chillerSerialNumber)}</div>
-        <div><b>Description:</b> ${escapeHtml(item.description)} <span class="laneTag">${escapeHtml(item.laneType)}</span></div>
-      </div>
-    </div>
-  `).join("");
-
-  document.querySelectorAll(".itemRemoveBtn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const idx = Number(btn.dataset.index);
-      state.scannedItems.splice(idx, 1);
-      renderFabricationItemList();
-      saveState();
-      showScanStatus("Item removed.", "info");
-    });
-  });
-}
-
-export function renderFabricationStatusSummary() {
-  const grouped = groupItemsByChiller(state.scannedItems);
-
-  setText("statusEmployee", state.employeeData?.employeeName || "-");
-  setText("statusEmpNo", state.employeeData?.employeeNumber || "-");
-  setText("statusStation", state.employeeData?.station || "-");
-  setText("statusManpower", state.employeeData?.manpower ?? "-");
-  setText("statusTotalItems", String(state.scannedItems.length || 0));
-  setText("statusTotalProjects", String(grouped.length || 0));
-
-  const summary = el("fabricationSummary");
-  const groupedItems = el("groupedItems");
-  summary?.classList.toggle("hidden", !grouped.length);
-  if (!groupedItems) return;
-
-  if (!grouped.length) {
-    groupedItems.innerHTML = `<div class="hint">No grouped items.</div>`;
-    return;
-  }
-
-  groupedItems.innerHTML = grouped.map(group => `
-    <div class="groupBlock">
-      <div class="groupHead">${escapeHtml(group.projectName)} - ${escapeHtml(group.chillerSerialNumber)}</div>
-      <div class="groupItems">
-        ${group.items.map(item => `
-          <div class="groupItem">
-            <span class="groupItemBullet">•</span>
-            <span class="groupItemText">
-              <span class="groupItemId">${escapeHtml(item.itemID)}</span>
-              <span class="groupItemDivider">-</span>
-              <span class="groupItemDescription">${escapeHtml(item.description)}</span>
-            </span>
-          </div>
-        `).join("")}
-      </div>
-    </div>
-  `).join("");
 }
 
 export function renderStopwatch() {
@@ -279,7 +192,6 @@ export function syncStatusButtons() {
   const startBtn = el("btnStartProcess");
   const stopBtn = el("btnStopProcess");
   const holdBtn = el("btnHoldProcess");
-  const backToItemsBtn = el("btnBackToItems");
   const procSel = el("processSelect");
   const insulationSel = el("insulationItemSelect");
   if (!startBtn || !stopBtn || !holdBtn) return;
@@ -291,28 +203,17 @@ export function syncStatusButtons() {
     kind === "CHILLER" &&
     isInsulationStation(station) &&
     !insulationSel?.value;
-  const hasFabricationBatch = isFabricationMode() && state.activeRunDocs.length > 0;
   const startDisabled =
     state.runRunning ||
     state.startInFlight ||
     state.statusCheckInFlight ||
     state.startLockedByStatus ||
     noProcessSelected ||
-    noRequiredInsulationItem ||
-    hasFabricationBatch;
+    noRequiredInsulationItem;
 
   startBtn.disabled = startDisabled;
-  stopBtn.disabled = isFabricationMode()
-    ? !hasFabricationBatch || (state.currentStatus !== "running" && state.currentStatus !== "on_hold")
-    : !state.runRunning;
-  holdBtn.disabled = isFabricationMode()
-    ? !hasFabricationBatch || state.currentStatus !== "running"
-    : !state.runRunning;
-
-  backToItemsBtn?.classList.toggle(
-    "hidden",
-    !isFabricationMode() || hasFabricationBatch || state.runRunning || state.startInFlight
-  );
+  stopBtn.disabled = !state.runRunning;
+  holdBtn.disabled = !state.runRunning;
 
   if (procSel) {
     procSel.disabled =
@@ -352,9 +253,6 @@ export function resetAllData() {
   state.activeScope = null;
   state.selectedProcessName = null;
   state.selectedInsulationItemType = null;
-  state.scannedItems = [];
-  state.activeBatchSessionId = null;
-  state.activeRunDocs = [];
   state.currentStatus = "idle";
   state.currentStep = "employee";
 
@@ -380,15 +278,8 @@ export function resetAllData() {
   setText("statusStation", "-");
   setText("statusType", "-");
   setText("statusManpower", "-");
-  setText("statusEmployee", "-");
-  setText("statusEmpNo", "-");
-  setText("statusTotalItems", "-");
-  setText("statusTotalProjects", "-");
 
   if (el("manpowerInput")) el("manpowerInput").value = "";
-  if (el("itemCount")) el("itemCount").textContent = "0";
-  if (el("itemList")) el("itemList").innerHTML = `<div class="hint">No items scanned yet.</div>`;
-  el("fabricationSummary")?.classList.add("hidden");
   const sel = el("processSelect");
   if (sel) {
     sel.innerHTML = "";

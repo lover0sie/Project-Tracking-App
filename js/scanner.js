@@ -4,40 +4,12 @@ import { state, saveState, shouldIgnoreDuplicate, isFabricationMode } from "./st
 import {
   parseChillerQR,
   parseEmployeeQR,
-  parseFabricationItemQR,
+  parseFabricationProjectQR,
   parsePvQR
 } from "./qr.js";
-import { el, setText, showScanStatus, loadProcessesForCurrentUnit, renderFabricationItemList } from "./ui.js";
+import { el, setText, showScanStatus, loadProcessesForCurrentUnit } from "./ui.js";
 
 /* Html5Qrcode is global */
-
-function isDuplicateFabricationItem(newItem) {
-  return state.scannedItems.some(item =>
-    String(item.itemID).trim().toUpperCase() === String(newItem.itemID).trim().toUpperCase()
-  );
-}
-
-function handleFabricationItemScan(text) {
-  try {
-    if (state.scannedItems.length >= 20) {
-      showScanStatus("Maximum 20 items per batch session.", "err");
-      return;
-    }
-
-    const item = parseFabricationItemQR(text);
-    if (isDuplicateFabricationItem(item)) {
-      showScanStatus(`Duplicate blocked: ${item.itemID}`, "err");
-      return;
-    }
-
-    state.scannedItems.push(item);
-    renderFabricationItemList();
-    saveState();
-    showScanStatus(`Added item ${item.itemID}`, "ok", 1500);
-  } catch (err) {
-    showScanStatus(err.message || "Invalid fabrication item QR.", "err");
-  }
-}
 
 export function updateScanButtonUI() {
   const btn = el("start-scan");
@@ -137,7 +109,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
 
   if (isEmployee) {
     if (state.currentStep !== "employee") {
-      showScanStatus(isFabricationMode() ? "Wrong QR. Please scan ITEM QR." : "Wrong QR. Please scan PROJECT QR.", "err", 2000);
+      showScanStatus(isFabricationMode() ? "Wrong QR. Please scan PV or Chiller QR." : "Wrong QR. Please scan PROJECT QR.", "err", 2000);
       return;
     }
 
@@ -150,7 +122,6 @@ export async function onScanSuccess(decodedText, setStepFn) {
     }
 
     state.employeeData = { ...employee, manpower: null };
-    state.scannedItems = [];
     state.vesselData = null;
     state.chillerSerialNumber = null;
     state.activeScope = null;
@@ -168,11 +139,6 @@ export async function onScanSuccess(decodedText, setStepFn) {
     return;
   }
 
-  if (state.currentStep === "items" || (state.currentStep === "project" && isFabricationMode())) {
-    handleFabricationItemScan(text);
-    return;
-  }
-
   if (state.currentStep === "project" && isEmployee) {
     showScanStatus("Wrong QR. Please scan PROJECT QR.", "err", 2000);
     return;
@@ -182,10 +148,33 @@ export async function onScanSuccess(decodedText, setStepFn) {
   let ch = null;
 
   try {
-    pv = parsePvQR(text);
-    ch = parseChillerQR(text);
+    if (isFabricationMode()) {
+      pv = parseFabricationProjectQR(text);
+    } else {
+      pv = parsePvQR(text);
+      ch = parseChillerQR(text);
+    }
   } catch (err) {
     showScanStatus(err.message || "Invalid Project QR format!", "err");
+    return;
+  }
+
+  if (pv && isFabricationMode()) {
+    state.chillerSerialNumber = pv.chillerSerialNumber;
+    state.vesselData = pv;
+    state.activeScope = "FABRICATION_ITEM";
+
+    setText("projectName", pv.projectName);
+    setText("description", pv.description);
+    setText("materialNumber", pv.materialNumber);
+    setText("serialNumber", pv.chillerSerialNumber);
+    setText("type", pv.type);
+
+    loadProcessesForCurrentUnit();
+    showScanStatus("Project QR code successfully scanned.", "ok");
+    state.currentStep = "project";
+    saveState();
+    await stopScanner();
     return;
   }
 

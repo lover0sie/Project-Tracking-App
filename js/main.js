@@ -26,9 +26,7 @@ import {
   closeHoldModal,
   resetAllData,
   showSaveOverlay,
-  hideSaveOverlay,
-  renderFabricationItemList,
-  renderFabricationStatusSummary
+  hideSaveOverlay
 } from "./ui.js";
 
 import { startScanner, stopScanner, updateScanButtonUI, onScanSuccess } from "./scanner.js";
@@ -44,14 +42,9 @@ import {
   reconnectToRunning,
   resolveRunIdentity
 } from "./processRuns.js";
-import {
-  startOrResumeBatchRun,
-  holdBatchRun,
-  completeBatchRun
-} from "./fabricationRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-09-10-01";
+const APP_VERSION = "2026-09-22-01";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 
@@ -156,7 +149,6 @@ function populateInsulationItemsForCurrentModel() {
 
 async function checkCurrentRunStatusForSelection() {
   if (state.currentStep !== "status") return;
-  if (isFabricationMode()) return;
   if (!state.employeeData || !state.vesselData) return;
   if (state.runRunning) return;
 
@@ -315,8 +307,6 @@ async function setStep(step) {
   el("screen-employee")?.classList.toggle("hidden", step !== "employee");
   el("screen-project")?.classList.toggle("hidden", step !== "project");
   el("screen-status")?.classList.toggle("hidden", step !== "status");
-  el("screen-items")?.classList.toggle("hidden", step !== "items");
-
   const inStatus = (step === "status");
 
   // hide scanner in Status
@@ -330,25 +320,10 @@ async function setStep(step) {
   }
 
   if (inStatus) {
-    const fabricationMode = isFabricationMode();
-    el("statusTitle") && (el("statusTitle").textContent = fabricationMode ? "Fabrication Batch Description" : "Description");
-    el("fabricationSummary")?.classList.toggle("hidden", !fabricationMode);
+    el("statusTitle") && (el("statusTitle").textContent = "Description");
     document.querySelectorAll(".unitStatusField").forEach(node => {
-      node.classList.toggle("hidden", fabricationMode);
+      node.classList.remove("hidden");
     });
-    document.querySelectorAll(".fabStatusField").forEach(node => {
-      node.classList.toggle("hidden", !fabricationMode);
-    });
-
-    if (fabricationMode) {
-      loadProcessesForCurrentUnit();
-      renderFabricationStatusSummary();
-      await stopScanner();
-      renderStopwatch();
-      syncStatusButtons();
-      saveState();
-      return;
-    }
 
     if (state.vesselData) {
       loadProcessesForCurrentUnit();
@@ -400,17 +375,10 @@ async function setStep(step) {
     await checkCurrentRunStatusForSelection();
   }
 
-  if (step === "items") {
-    renderFabricationItemList();
-  }
-
   if (!inStatus) {
     el("statusTitle") && (el("statusTitle").textContent = "Description");
     document.querySelectorAll(".unitStatusField").forEach(node => {
       node.classList.remove("hidden");
-    });
-    document.querySelectorAll(".fabStatusField").forEach(node => {
-      node.classList.add("hidden");
     });
   }
 
@@ -447,8 +415,6 @@ async function restoreUIFromState() {
       state.vesselData.type ||
       "-";
   }
-
-  renderFabricationItemList();
 
   await setStep(state.currentStep);
 
@@ -514,10 +480,8 @@ el("to-project")?.addEventListener("click", async () => {
   saveState();
 
   if (isFabricationMode()) {
-    state.scannedItems = [];
-    renderFabricationItemList();
-    showScanStatus("Manpower saved. Now scan fabrication item QR.", "ok");
-    await setStep("items");
+    showScanStatus("Manpower saved. Now scan PV or Chiller QR.", "ok");
+    await setStep("project");
     return;
   }
 
@@ -539,41 +503,6 @@ el("to-status")?.addEventListener("click", () => {
 });
 
 
-el("to-fabrication-status")?.addEventListener("click", async () => {
-  if (!state.scannedItems.length) {
-    showScanStatus("Please scan at least 1 fabrication item.", "err");
-    return;
-  }
-
-  if (state.scanning) await stopScanner();
-  loadProcessesForCurrentUnit();
-  renderFabricationStatusSummary();
-  showScanStatus("Review batch and choose process.", "info");
-  await setStep("status");
-});
-
-el("btnClearItems")?.addEventListener("click", () => {
-  state.scannedItems = [];
-  renderFabricationItemList();
-  showScanStatus("All scanned items cleared.", "info");
-  saveState();
-});
-
-el("btnBackToItems")?.addEventListener("click", async () => {
-  if (!isFabricationMode()) return;
-
-  if (state.activeRunDocs.length || state.runRunning) {
-    showScanStatus("Cannot edit items after fabrication batch has started.", "err");
-    return;
-  }
-
-  state.currentStatus = "idle";
-  saveState();
-  await setStep("items");
-  renderFabricationItemList();
-  showScanStatus("You can scan or remove fabrication items.", "info");
-});
-
 // Scanner start/stop is toggled from the scan button outside status view.
 el("start-scan")?.addEventListener("click", async () => {
   if (state.currentStep === "status") return;
@@ -585,49 +514,11 @@ el("start-scan")?.addEventListener("click", async () => {
 
 // Start or resume behavior is delegated to run-management logic.
 el("btnStartProcess")?.addEventListener("click", async () => {
-  if (!isFabricationMode()) {
-    await startOrResumeRun();
-    return;
-  }
-
-  try {
-    const processName = el("processSelect")?.value || "";
-    if (!processName) return showScanStatus("Please select process before starting.", "err");
-    if (!state.scannedItems.length) return showScanStatus("Please scan at least 1 fabrication item.", "err");
-
-    state.startInFlight = true;
-    syncStatusButtons();
-    showSaveOverlay("Starting fabrication batch...");
-
-    const result = await startOrResumeBatchRun(processName);
-    startStopwatch();
-    renderStopwatch();
-    showScanStatus(
-      result.mode === "resumed"
-        ? "Fabrication batch resumed from ON HOLD."
-        : "Fabrication batch is running.",
-      "ok"
-    );
-    saveState();
-  } catch (err) {
-    console.error(err);
-    showScanStatus(err.message || "Unable to start fabrication batch.", "err");
-  } finally {
-    state.startInFlight = false;
-    hideSaveOverlay();
-    syncStatusButtons();
-  }
+  await startOrResumeRun();
 });
 
 // Completion intent is guarded and then routed to the completion confirmation modal.
 el("btnStopProcess")?.addEventListener("click", () => {
-  if (isFabricationMode()) {
-    if (!state.activeRunDocs.length) return showScanStatus("No fabrication batch to complete.", "err");
-    if (state.currentStatus !== "running" && state.currentStatus !== "on_hold") return showScanStatus("Fabrication batch is not running.", "err");
-    openCompleteModal();
-    return;
-  }
-
   if (!state.currentRunId) return showScanStatus("No running process to complete.", "err");
   if (!state.runRunning) return showScanStatus("Process is not running.", "err");
   openCompleteModal();
@@ -635,13 +526,6 @@ el("btnStopProcess")?.addEventListener("click", () => {
 
 // Hold intent is guarded and then routed to the on-hold modal.
 el("btnHoldProcess")?.addEventListener("click", () => {
-  if (isFabricationMode()) {
-    if (!state.activeRunDocs.length) return showScanStatus("No fabrication batch to hold.", "err");
-    if (state.currentStatus !== "running") return showScanStatus("Fabrication batch is not running.", "err");
-    openHoldModal();
-    return;
-  }
-
   if (!state.currentRunId) return showScanStatus("No running process to hold.", "err");
   openHoldModal();
 });
@@ -680,7 +564,7 @@ el("holdReason")?.addEventListener("change", () => {
 
 // On-hold data is validated and persisted through hold-run flow.
 el("holdSave")?.addEventListener("click", async () => {
-  if (!state.currentRunId && !(isFabricationMode() && state.activeRunDocs.length)) {
+  if (!state.currentRunId) {
     closeHoldModal();
     return;
   }
@@ -703,24 +587,6 @@ el("holdSave")?.addEventListener("click", async () => {
 
   closeHoldModal();
 
-  if (isFabricationMode()) {
-    try {
-      showSaveOverlay("Saving fabrication batch on hold...");
-      await holdBatchRun(reason, finalRemarks);
-      showSaveOverlay("Saved as On Hold", true);
-      setTimeout(async () => {
-        hideSaveOverlay();
-        resetAllData();
-        await setStep("employee");
-      }, 900);
-    } catch (err) {
-      console.error(err);
-      hideSaveOverlay();
-      showScanStatus(err.message || "Failed to save fabrication batch on hold.", "err");
-    }
-    return;
-  }
-
   await holdRunAndReset(reason, finalRemarks, setStep, resetAllData, hideSaveOverlay, showSaveOverlay);
 });
 
@@ -739,8 +605,6 @@ el("processSelect")?.addEventListener("change", async () => {
 
   syncStatusButtons();
 
-  if (isFabricationMode()) return;
-
   await checkCurrentRunStatusForSelection();
 });
 
@@ -749,8 +613,6 @@ el("insulationItemSelect")?.addEventListener("change", async () => {
   syncInsulationProcessForItem(state.selectedInsulationItemType);
   saveState();
   syncStatusButtons();
-
-  if (isFabricationMode()) return;
 
   await checkCurrentRunStatusForSelection();
 });
@@ -774,24 +636,6 @@ el("completeCancel")?.addEventListener("click", () => {
 // Completion confirmation is committed through complete-run flow.
 el("completeConfirm")?.addEventListener("click", async () => {
   closeCompleteModal();
-
-  if (isFabricationMode()) {
-    try {
-      showSaveOverlay("Completing fabrication batch...");
-      await completeBatchRun();
-      showSaveOverlay("Fabrication batch completed", true);
-      setTimeout(async () => {
-        hideSaveOverlay();
-        resetAllData();
-        await setStep("employee");
-      }, 900);
-    } catch (err) {
-      console.error(err);
-      hideSaveOverlay();
-      showScanStatus(err.message || "Failed to complete fabrication batch.", "err");
-    }
-    return;
-  }
 
   await completeRunAndReset(setStep, resetAllData, hideSaveOverlay, showSaveOverlay);
 });

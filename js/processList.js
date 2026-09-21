@@ -151,9 +151,21 @@ export const INSULATION_ITEM_BY_MODEL = {
 }
 
 export const FABRICATION_PROCESSES = [
-  "1 - Plasma cutting to bevelling",
-  "2 - Shotblast to rolling",
-  "3 - Longitudinal SAW",
+  "1A - Plasma cutting",
+  "1B - Auto bevelling",
+  "1C - Manual bevelling",
+  "1D - Grinding",
+  "2A - Inhouse shotblast",
+  "2B - Warehouse shotblast",
+  "2C - Chiller shotblast",
+  "2D - Manual shotblast", 
+  "2E - Rolling",
+  "3 - Longitudinal seam welding (SAW)",
   "4 - Rerolling",
-  "5 - Circumference SAW (Two shells joining)"
+  "5 - Circular seam welding (SAW)",
+  "Surface treatment",
+  "CNC1 - CNC drilling",
+  "CNC2 - CNC chamfer",
+  "CNC3 - CNC superolling",
+
 ];

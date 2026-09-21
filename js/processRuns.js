@@ -384,6 +384,7 @@ export async function startOrResumeRun() {
       version: v.version,
 
       qrKind: v.qrKind || "UNKNOWN",
+      sourceQrKind: v.sourceQrKind || null,
       chillerSerialNumber: v.chillerSerialNumber || null,
       pvSerialNumber: finalPvSerialNumber,
       coolingType: v.coolingType || null,
@@ -413,6 +414,9 @@ export async function startOrResumeRun() {
     } else if (kind === "CHILLER") {
       serialPart = serialNumber;
       typePart = finalVesselType || insulationItemType || v.coolingType;
+    } else if (kind === "FABRICATION_ITEM") {
+      serialPart = serialNumber;
+      typePart = "FABRICATION";
     }
 
     const docId = [
