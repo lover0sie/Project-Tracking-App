@@ -8,8 +8,11 @@ function isVersion(value, expectedVersion) {
   return cleanText(value).toUpperCase() === expectedVersion;
 }
 
-function hasUnknownWord(values) {
-  return values.some(value => /\bUNKNOWN\b/i.test(cleanText(value)));
+function hasUnknownWord(values, ignoredIndexes = []) {
+  const ignored = new Set(ignoredIndexes);
+  return values.some((value, index) => (
+    !ignored.has(index) && /\bUNKNOWN\b/i.test(cleanText(value))
+  ));
 }
 
 function assertNoEmptyValues(qrLabel, values) {
@@ -18,8 +21,8 @@ function assertNoEmptyValues(qrLabel, values) {
   }
 }
 
-function assertNoUnknownWords(qrLabel, values) {
-  if (hasUnknownWord(values)) {
+function assertNoUnknownWords(qrLabel, values, ignoredIndexes = []) {
+  if (hasUnknownWord(values, ignoredIndexes)) {
     throw new Error(`${qrLabel} QR contains UNKNOWN value.`);
   }
 }
@@ -52,7 +55,7 @@ export function parseChillerQR(text) {
     throw new Error("Invalid Chiller QR version.");
   }
 
-  assertNoUnknownWords("Chiller", parts);
+  assertNoUnknownWords("Chiller", parts, [3]);
 
   return {
     qrKind: "CHILLER",
@@ -80,7 +83,7 @@ export function parsePvQR(text) {
     throw new Error("Invalid PV QR version.");
   }
 
-  assertNoUnknownWords("PV", parts);
+  assertNoUnknownWords("PV", parts, [3]);
 
   return {
     qrKind: "PV",
