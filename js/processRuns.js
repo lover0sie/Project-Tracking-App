@@ -234,6 +234,18 @@ export async function startOrResumeRun() {
   if (!state.vesselData) return showScanStatus("Scan project QR first.", "err");
 
   const processSel = el("processSelect");
+  const v = state.vesselData;
+  const station = state.employeeData.station;
+  const selectedInsulationItemType = (el("insulationItemSelect")?.value || "").trim();
+
+  if (
+    isInsulationStation(station) &&
+    v.qrKind === "CHILLER" &&
+    !selectedInsulationItemType
+  ) {
+    return showScanStatus("Please select insulation item before starting.", "err");
+  }
+
   const processName = processSel?.value || "";
   if (!processName) return showScanStatus("Please select a process before starting.", "err");
 
@@ -248,19 +260,7 @@ export async function startOrResumeRun() {
   syncStatusButtons();
 
   try {
-    const v = state.vesselData;
-    const station = state.employeeData.station;
     const runDate = getMYDateKey();
-
-    const selectedInsulationItemType = (el("insulationItemSelect")?.value || "").trim();
-
-    if (
-      isInsulationStation(station) &&
-      v.qrKind === "CHILLER" &&
-      !selectedInsulationItemType
-    ) {
-      return showScanStatus("Please select insulation item before starting.", "err");
-    }
 
     const {
       insulationItemType,

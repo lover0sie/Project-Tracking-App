@@ -14,7 +14,7 @@ import {
 import {
   PROCESS_BY_PV,
   PROCESS_BY_CHILLER,
-  INSULATION_PROCESSES,
+  INSULATION_PROCESS_BY_ITEM,
   FABRICATION_PROCESSES
 } from "./processList.js";
 
@@ -106,12 +106,16 @@ export function loadProcessesForCurrentUnit() {
 
   const kind = (state.vesselData?.qrKind || state.activeScope || "").toUpperCase();
   const station = state.employeeData?.station || "";
+  const needsInsulationItem = kind === "CHILLER" && isInsulationStation(station);
+  const selectedInsulationItem = String(state.selectedInsulationItemType || el("insulationItemSelect")?.value || "")
+    .trim()
+    .toUpperCase();
   let list = [];
 
   if (isFabricationMode()) {
     list = FABRICATION_PROCESSES;
-  } else if (kind === "CHILLER" && isInsulationStation(station)) {
-    list = INSULATION_PROCESSES[station] || [];
+  } else if (needsInsulationItem) {
+    list = INSULATION_PROCESS_BY_ITEM[selectedInsulationItem] || [];
   } else if (kind === "PV") {
     const vesselKey = getVesselTypeKey(state.vesselData?.vesselType);
     list = PROCESS_BY_PV[vesselKey] || [];
@@ -122,7 +126,10 @@ export function loadProcessesForCurrentUnit() {
 
   const ph = document.createElement("option");
   ph.value = "";
-  ph.textContent = list.length ? "Select process..." : "No process list for this unit";
+  ph.textContent =
+    needsInsulationItem && !selectedInsulationItem
+      ? "Select item first..."
+      : list.length ? "Select process..." : "No process list for this unit";
   ph.disabled = true;
   ph.selected = true;
   sel.appendChild(ph);
@@ -141,6 +148,8 @@ export function loadProcessesForCurrentUnit() {
     state.selectedProcessName = null;
     saveState();
   }
+
+  sel.disabled = needsInsulationItem && !selectedInsulationItem;
 }
 
 export function renderStopwatch() {
@@ -219,7 +228,7 @@ export function syncStatusButtons() {
     procSel.disabled =
       state.runRunning ||
       state.resumeLocked ||
-      (kind === "CHILLER" && isInsulationStation(station));
+      (kind === "CHILLER" && isInsulationStation(station) && !insulationSel?.value);
   }
 
   if (insulationSel) {

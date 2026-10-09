@@ -8,10 +8,7 @@ import {
   isFabricationMode
 } from "./state.js";
 
-import {
-  INSULATION_ITEM_BY_MODEL,
-  INSULATION_PROCESS_BY_ITEM
-} from "./processList.js";
+import { INSULATION_ITEM_BY_MODEL } from "./processList.js";
 
 import {
   el,
@@ -95,19 +92,6 @@ function getInsulationItemsForModel(model = "") {
   return matchedKey ? INSULATION_ITEM_BY_MODEL[matchedKey] : [];
 }
 
-function getInsulationProcessForItem(itemType = "") {
-  return INSULATION_PROCESS_BY_ITEM[String(itemType || "").trim().toUpperCase()] || "";
-}
-
-function syncInsulationProcessForItem(itemType = "") {
-  const procSel = el("processSelect");
-  if (!procSel || !requiresInsulationItemSelection()) return;
-
-  const processName = getInsulationProcessForItem(itemType);
-  procSel.value = processName;
-  state.selectedProcessName = processName || null;
-}
-
 function populateInsulationItemsForCurrentModel() {
   const itemBox = el("insulationItemBox");
   const itemSel = el("insulationItemSelect");
@@ -118,6 +102,7 @@ function populateInsulationItemsForCurrentModel() {
   if (!requiresInsulationItemSelection()) {
     itemBox.classList.add("hidden");
     state.selectedInsulationItemType = null;
+    loadProcessesForCurrentUnit();
     return;
   }
 
@@ -136,11 +121,11 @@ function populateInsulationItemsForCurrentModel() {
     itemTypes.includes(state.selectedInsulationItemType)
   ) {
     itemSel.value = state.selectedInsulationItemType;
-    syncInsulationProcessForItem(state.selectedInsulationItemType);
   } else {
     state.selectedInsulationItemType = null;
-    syncInsulationProcessForItem("");
   }
+
+  loadProcessesForCurrentUnit();
 
   if (!itemTypes.length) {
     showScanStatus("No insulation item list found for this model.", "err");
@@ -595,11 +580,8 @@ el("processSelect")?.addEventListener("change", async () => {
   const proc = el("processSelect");
 
   if (proc) {
-    state.selectedProcessName = proc.value;
+    state.selectedProcessName = proc.value || null;
   }
-
-  state.selectedInsulationItemType = null;
-  populateInsulationItemsForCurrentModel();
 
   saveState();
 
@@ -610,7 +592,8 @@ el("processSelect")?.addEventListener("change", async () => {
 
 el("insulationItemSelect")?.addEventListener("change", async () => {
   state.selectedInsulationItemType = getSelectedInsulationItemType() || null;
-  syncInsulationProcessForItem(state.selectedInsulationItemType);
+  state.selectedProcessName = null;
+  loadProcessesForCurrentUnit();
   saveState();
   syncStatusButtons();
 

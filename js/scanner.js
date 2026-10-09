@@ -11,6 +11,11 @@ import { el, setText, showScanStatus, loadProcessesForCurrentUnit } from "./ui.j
 
 /* Html5Qrcode is global */
 
+function clearProcessSelection() {
+  state.selectedProcessName = null;
+  state.selectedInsulationItemType = null;
+}
+
 export function updateScanButtonUI() {
   const btn = el("start-scan");
   if (!btn) return;
@@ -125,6 +130,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
     state.vesselData = null;
     state.chillerSerialNumber = null;
     state.activeScope = null;
+    clearProcessSelection();
 
     setText("empName", employee.employeeName);
     setText("empNo", employee.employeeNumber);
@@ -163,6 +169,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
     state.chillerSerialNumber = pv.chillerSerialNumber;
     state.vesselData = pv;
     state.activeScope = "FABRICATION_ITEM";
+    clearProcessSelection();
 
     setText("projectName", pv.projectName);
     setText("description", pv.description);
@@ -186,6 +193,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
       description: pv.partNumber
     };
     state.activeScope = "PV";
+    clearProcessSelection();
 
     setText("projectName", pv.projectName);
     setText("description", pv.partNumber);
@@ -205,6 +213,7 @@ export async function onScanSuccess(decodedText, setStepFn) {
     state.chillerSerialNumber = ch.chillerSerialNumber;
     state.vesselData = { ...ch, serialNumber: ch.chillerSerialNumber };
     state.activeScope = "CHILLER";
+    clearProcessSelection();
 
     setText("projectName", ch.projectName);
     setText("description", ch.description);

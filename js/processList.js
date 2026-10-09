@@ -17,8 +17,10 @@ export const PROCESS_BY_PV = {
     "14B - Tube expansion",
     "14C - Shell body slotting",
     "15 - Primer painting",
-    "16 - Pneumatic testing",
-    "17 - Hydrostatic testing",
+    "16A - Pneumatic preparation",
+    "16B - Pneumatic testing",
+    "17A - Hydrostatic preparation",
+    "17B - Hydrostatic testing",
     "18, 19 - Primer painting (weld seam) and top coat painting"
   ],
 
@@ -37,8 +39,10 @@ export const PROCESS_BY_PV = {
     "14B - Tube expansion",
     "14C - Shell body slotting",
     "15 - Primer painting",
-    "16 - Pneumatic testing",
-    "17 - Hydrostatic testing",
+    "16A - Pneumatic preparation",
+    "16B - Pneumatic testing",
+    "17A - Hydrostatic preparation",
+    "17B - Hydrostatic testing",
     "18, 19 - Primer painting (weld seam) and top coat painting"
   ],
 
@@ -48,7 +52,8 @@ export const PROCESS_BY_PV = {
     "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
     "12 - Bracket and attachment fitting and welding",
     "15 - Primer painting",
-    "16 - Pneumatic testing",
+    "16A - Pneumatic preparation",
+    "16B - Pneumatic testing",
     "19 - Top coat painting"
   ],
 
@@ -58,7 +63,8 @@ export const PROCESS_BY_PV = {
     "8, 9, 10, 11 - Internal plate, distribution box, tube support and bush fitting and welding",
     "12 - Bracket and attachment fitting and welding",
     "15 - Primer painting",
-    "16 - Pneumatic testing",
+    "16A - Pneumatic preparation",
+    "16B - Pneumatic testing",
     "19 - Top coat painting"
   ],
 
@@ -118,14 +124,19 @@ export const PROCESS_BY_CHILLER = {
 
 export const INSULATION_STATIONS = ["Insulation AB"];
 
-export const INSULATION_PROCESS_COMPRESSOR = "A - Insulation compressor";
-export const INSULATION_PROCESS_COMPONENT = "B - Insulation evaporator/condenser and economizer/oil separator";
+export const INSULATION_PROCESS_COMPRESSOR = [
+   "A1 - Insulation preparation",
+   "A2 - Insulation compressor"
+  ];
+
+
+export const INSULATION_PROCESS_COMPONENT = [
+  "B1 - Insulation preparation",
+  "B2 - Insulation evaporator/condenser and economizer/oil separator"
+];
 
 export const INSULATION_PROCESSES = {
-  "Insulation AB": [
-    INSULATION_PROCESS_COMPRESSOR,
-    INSULATION_PROCESS_COMPONENT
-  ]
+  "Insulation AB": []
 };
 
 export const INSULATION_PROCESS_BY_ITEM = {
