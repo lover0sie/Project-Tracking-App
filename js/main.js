@@ -9,6 +9,7 @@ import {
 } from "./state.js";
 
 import { INSULATION_ITEM_BY_MODEL } from "./processList.js";
+import { syncRunStatusListener } from "./runStatus.js";
 
 import {
   el,
@@ -41,7 +42,7 @@ import {
 } from "./processRuns.js";
 
 // Added app versioning for checking purposes
-const APP_VERSION = "2026-10-09-01";
+const APP_VERSION = "2026-11-13-01";
 let updateAvailable = false;
 let latestVersion = APP_VERSION;
 
@@ -135,7 +136,7 @@ function populateInsulationItemsForCurrentModel() {
 async function checkCurrentRunStatusForSelection() {
   if (state.currentStep !== "status") return;
   if (!state.employeeData || !state.vesselData) return;
-  if (state.runRunning) return;
+  if (state.runRunning || state.startInFlight || state.runWriteInFlight) return;
 
   const processName = el("processSelect")?.value || "";
   if (!processName) return;
@@ -430,6 +431,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 // Timer rendering is paused/resumed based on document visibility changes.
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
+    syncRunStatusListener(true);
     if (state.runRunning && !state.runTimer) {
       state.runTimer = setInterval(renderStopwatch, 200);
     }
@@ -602,12 +604,19 @@ el("insulationItemSelect")?.addEventListener("change", async () => {
 
 // Timer rendering is restored when the page is shown again from cache/navigation.
 window.addEventListener("pageshow", () => {
+  syncRunStatusListener(true);
   // Safari may fire pageshow when the same tab returns from background/BFCache.
   // The operator should stay on the current workflow step; only the timer/UI are revived.
   if (state.runRunning && !state.runTimer) {
     state.runTimer = setInterval(renderStopwatch, 200);
   }
   renderStopwatch();
+  syncStatusButtons();
+});
+
+// Live status monitoring is reattached when the network connection is restored.
+window.addEventListener("online", () => {
+  syncRunStatusListener(true);
   syncStatusButtons();
 });
 

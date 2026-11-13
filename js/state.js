@@ -65,6 +65,8 @@ export const state = {
   startLockedByStatus: false,
   startInFlight: false,
   statusCheckInFlight: false,
+  runStatusPending: false,
+  runWriteInFlight: false,
 
   selectedInsulationItemType: null,
 

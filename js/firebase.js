@@ -11,7 +11,9 @@ import {
   where,
   getDocs,
   limit,
-  arrayUnion     
+  arrayUnion,
+  onSnapshot,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 /* Firebase configuration and database initialization */
@@ -39,5 +41,7 @@ export {
   where,
   getDocs,
   limit,
-  arrayUnion    
+  arrayUnion,
+  onSnapshot,
+  runTransaction
 };

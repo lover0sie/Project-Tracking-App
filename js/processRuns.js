@@ -6,7 +6,7 @@ import {
   getDocs,
   limit,
   doc,
-  updateDoc,
+  runTransaction,
   addDoc,
   setDoc,
   serverTimestamp,
@@ -31,6 +31,29 @@ import {
   startStopwatch,
   stopStopwatch
 } from "./ui.js";
+
+import { applyRunStatus, getRunDurationMs, syncRunStatusListener } from "./runStatus.js";
+
+// The latest status is checked atomically before a run transition is committed.
+async function updateRunIfStatus(expectedStatus, payload) {
+  const ref = runDoc(state.currentRunId);
+  const result = await runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(ref);
+    const current = snapshot.exists() ? snapshot.data() : null;
+    const owner = String(current?.resumedByNumber || current?.startedByNumber || "").trim();
+    const me = String(state.employeeData?.employeeNumber || "").trim();
+    if (current?.status !== expectedStatus || (expectedStatus === "running" && owner && owner !== me)) {
+      return { updated: false, current };
+    }
+    transaction.update(ref, payload);
+    return { updated: true, current };
+  });
+  if (!result.updated) {
+    state.runWriteInFlight = false;
+    applyRunStatus(result.current);
+  }
+  return result;
+}
 
 // The Firestore runs subcollection reference is resolved for the active chiller key.
 function runsCol() {
@@ -96,13 +119,7 @@ export function applyResumeRunToUI(runDoc) {
   state.runRunning = false;
   state.runStartEpoch = 0;
 
-  const fromDocDuration = Number(runDoc.durationMs || 0);
-  const fromTimestamps =
-    (runDoc.startEpochMs && runDoc.holdEpochMs)
-      ? (runDoc.holdEpochMs - runDoc.startEpochMs)
-      : 0;
-
-  state.runAccumMs = fromDocDuration || fromTimestamps || 0;
+  state.runAccumMs = getRunDurationMs(runDoc);
 
   state.resumeLocked = true;
   state.resumeRunStatus = "on_hold";
@@ -229,7 +246,7 @@ export async function startOrResumeRun() {
   if (!state.chillerSerialNumber) {
     return showScanStatus("Missing chiller serial number. Scan PV/Chiller QR again.", "err");
   }
-  if (state.startInFlight || state.runRunning) return;
+  if (state.startInFlight || state.runRunning || state.runWriteInFlight || state.runStatusPending) return;
   if (!state.employeeData) return showScanStatus("Scan employee QR first.", "err");
   if (!state.vesselData) return showScanStatus("Scan project QR first.", "err");
 
@@ -321,7 +338,7 @@ export async function startOrResumeRun() {
 
       const resumedEpochMs = Date.now();
 
-      await updateDoc(runDoc(state.currentRunId), {
+      const result = await updateRunIfStatus("on_hold", {
         status: "running",
         resumedAt: serverTimestamp(),
         resumedEpochMs,
@@ -335,11 +352,14 @@ export async function startOrResumeRun() {
         })
       });
 
+      if (!result.updated) return;
+      // The timer is reconciled with a fresh snapshot after the resume has been saved.
+      syncRunStatusListener(true);
+
       if (stopBtn) stopBtn.disabled = false;
       if (holdBtn) holdBtn.disabled = false;
 
-      startStopwatch();
-      showScanStatus("Process resumed (running).", "ok");
+      showScanStatus("Resume saved. Waiting for live status...", "info");
       saveState();
       return;
     }
@@ -443,8 +463,8 @@ export async function startOrResumeRun() {
     if (holdBtn) holdBtn.disabled = false;
 
     state.runAccumMs = 0;
-    startStopwatch();
-    showScanStatus("Process is running.", "ok");
+    syncRunStatusListener();
+    showScanStatus("Process started. Waiting for live status...", "info");
 
     saveState();
 
@@ -460,6 +480,7 @@ export async function startOrResumeRun() {
 
 // A running process is completed in Firestore and local UI/state is reset.
 export async function completeRunAndReset(setStepFn, resetAllDataFn, hideOverlayFn, showOverlayFn) {
+  if (state.startInFlight || state.runWriteInFlight || state.runStatusPending) return;
   if (!state.currentRunId) {
     showScanStatus("No running process to complete.", "err");
     return;
@@ -470,17 +491,24 @@ export async function completeRunAndReset(setStepFn, resetAllDataFn, hideOverlay
   }
 
   const durationMs = getElapsedMs();
+  state.runWriteInFlight = true;
   stopStopwatch();
+  syncStatusButtons();
 
   showOverlayFn?.("Saving (Completed)...");
 
   try {
-      await updateDoc(runDoc(state.currentRunId), {
+    const result = await updateRunIfStatus("running", {
       status: "completed",
       endAt: serverTimestamp(),
       endEpochMs: Date.now(),
       durationMs
     });
+
+    if (!result.updated) {
+      hideOverlayFn?.();
+      return;
+    }
 
     showOverlayFn?.("Process completed", true);
 
@@ -496,15 +524,21 @@ export async function completeRunAndReset(setStepFn, resetAllDataFn, hideOverlay
     console.error(err);
     hideOverlayFn?.();
     showScanStatus("Failed to complete process. Try again.", "err");
+    syncRunStatusListener(true);
+  } finally {
+    state.runWriteInFlight = false;
+    syncStatusButtons();
   }
 }
 
 // A running process is saved as on-hold in Firestore and local UI/state is reset.
 export async function holdRunAndReset(reason, remarks, setStepFn, resetAllDataFn, hideOverlayFn, showOverlayFn) {
-  if (!state.currentRunId) return;
+  if (!state.currentRunId || !state.runRunning || state.startInFlight || state.runWriteInFlight || state.runStatusPending) return;
 
   const durationMs = getElapsedMs();
+  state.runWriteInFlight = true;
   stopStopwatch();
+  syncStatusButtons();
 
   showOverlayFn?.("Saving (On Hold)...");
 
@@ -512,7 +546,7 @@ export async function holdRunAndReset(reason, remarks, setStepFn, resetAllDataFn
 
     const holdEpochMs = Date.now();
 
-    await updateDoc(runDoc(state.currentRunId), {
+    const result = await updateRunIfStatus("running", {
       status: "on_hold",
       durationMs,
 
@@ -532,6 +566,10 @@ export async function holdRunAndReset(reason, remarks, setStepFn, resetAllDataFn
       })
     });
 
+    if (!result.updated) {
+      hideOverlayFn?.();
+      return;
+    }
 
     showOverlayFn?.("Saved as On Hold", true);
 
@@ -545,6 +583,10 @@ export async function holdRunAndReset(reason, remarks, setStepFn, resetAllDataFn
     console.error(err);
     hideOverlayFn?.();
     showScanStatus("Failed to save On Hold. Try again.", "err");
+    syncRunStatusListener(true);
+  } finally {
+    state.runWriteInFlight = false;
+    syncStatusButtons();
   }
 }
 

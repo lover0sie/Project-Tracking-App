@@ -1,5 +1,7 @@
 ﻿/* Update the UI */
 
+import { syncRunStatusListener } from "./runStatus.js";
+
 import {
   state,
   isInsulationStation,
@@ -198,6 +200,7 @@ export function stopStopwatch() {
 }
 
 export function syncStatusButtons() {
+  syncRunStatusListener();
   const startBtn = el("btnStartProcess");
   const stopBtn = el("btnStopProcess");
   const holdBtn = el("btnHoldProcess");
@@ -216,23 +219,26 @@ export function syncStatusButtons() {
     state.runRunning ||
     state.startInFlight ||
     state.statusCheckInFlight ||
+    state.runStatusPending ||
+    state.runWriteInFlight ||
     state.startLockedByStatus ||
     noProcessSelected ||
     noRequiredInsulationItem;
 
   startBtn.disabled = startDisabled;
-  stopBtn.disabled = !state.runRunning;
-  holdBtn.disabled = !state.runRunning;
+  stopBtn.disabled = !state.runRunning || state.startInFlight || state.runStatusPending || state.runWriteInFlight;
+  holdBtn.disabled = !state.runRunning || state.startInFlight || state.runStatusPending || state.runWriteInFlight;
 
   if (procSel) {
     procSel.disabled =
+      state.startInFlight || state.runWriteInFlight || state.runStatusPending ||
       state.runRunning ||
       state.resumeLocked ||
       (kind === "CHILLER" && isInsulationStation(station) && !insulationSel?.value);
   }
 
   if (insulationSel) {
-    insulationSel.disabled = state.runRunning || state.resumeLocked;
+    insulationSel.disabled = state.runRunning || state.resumeLocked || state.startInFlight || state.runWriteInFlight || state.runStatusPending;
   }
 }
 
@@ -266,6 +272,7 @@ export function resetAllData() {
   state.currentStep = "employee";
 
   state.currentRunId = null;
+  syncRunStatusListener();
   state.runRunning = false;
   state.runStartEpoch = 0;
   state.runAccumMs = 0;
